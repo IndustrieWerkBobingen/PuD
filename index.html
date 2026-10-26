@@ -652,14 +652,14 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
 
 <!-- ===== Positionen ===== -->
 <section id="v-positionen" class="verstecke">
-  <h1>Positionen</h1>
+  <h1>Positionen und Arbeitsschritte</h1>
   <p class="sub">Alle Positionen vom Verrechnungsblatt, nach Nummer sortiert. Jede Position geh&ouml;rt zu einer <b>Ofen-Gruppe</b> vom Blatt &bdquo;Richtwerte Polymer&ldquo; (Tr. Faser, Monofil, Spunbond, Berlin) &ndash; daraus kommen Polymer je St&uuml;ck und die Angabe je Ofen. <b>Klick auf eine Zeile</b> &ouml;ffnet die Position.</p>
   <div class="kennzahlen" id="poKennzahlen"></div>
   <div class="karte" id="poGroesse" style="margin-bottom:14px;display:none"></div>
   <div class="werkzeuge">
     <input type="text" id="poSuche" placeholder="Suchen (Nummer, Name, Kunde)" style="width:260px">
     <select id="poKunde"><option value="">alle Kunden</option></select>
-    <select id="poFilter"><option value="">alle Positionen</option><option value="rw">ohne Ofen-Gruppe</option><option value="ofen">geht in den Ofen</option><option value="kein">kein Ofen</option><option value="sonst">nur Sonstiges</option></select>
+    <select id="poFilter"><option value="">alle Positionen</option><option value="rw">ohne Ofen-Gruppe</option><option value="ofen">geht in den Ofen</option><option value="kein">kein Ofen</option><option value="sonst">nur Sonstiges</option><option value="leer">ohne Arbeitsschritte</option></select>
     <span style="margin-left:auto"></span>
     <button class="btn sek nurSchreiben" id="poStandardBtn" onclick="positionenStandard()">Standard-Positionen anlegen / aktualisieren</button>
     <button class="btn sek" onclick="positionenCsv()">Als CSV exportieren</button>
@@ -2000,14 +2000,15 @@ function zeichnePositionen(){
   if(sw && altPositionen().length) el('poKennzahlen').innerHTML += '<div class="hinweis" style="flex:1 1 100%;background:#FFF4D6;border:1px solid #E4B23C;border-radius:8px;padding:10px 14px"><b>'+altPositionen().length+' alte bzw. entfallene Positionen</b> (z. B. '+esc(altPositionen().slice(0,3).map(t => t.nr||t.name).join(', '))+'). Mit „Standard-Positionen anlegen / aktualisieren“ werden sie entfernt, die Kunden Gossner/LEIPA/Optipack angelegt und alle Nummern 101–1804 aktualisiert.</div>';
   if(!alle.length){ el('poTab').innerHTML = '<tbody><tr><td class="sub" style="padding:18px">Noch keine Positionen. Mit „Standard-Positionen anlegen“ kommen alle Positionen vom Verrechnungsblatt hinein (Arbeitsschritte, Einheiten und Polymer sind vorbelegt und änderbar).</td></tr></tbody>'; return; }
   const liste = alle.filter(t => (!kf || t.kunde === kf) && (!s || (t.nr+' '+t.name+' '+(t.kunde||'')).toLowerCase().includes(s)) &&
-    (!ff || (ff === 'rw' && !t.rwGr) || (ff === 'ofen' && posOfen(t)) || (ff === 'kein' && !posOfen(t)) || (ff === 'sonst' && t.sonstiges)));
-  let h = '<thead><tr><th style="width:64px">Nr</th><th>Position</th><th>Kunde</th><th>Ofen-Gruppe</th><th class="num">Polymer je Stück</th><th>je Ofen</th><th style="width:44px"></th></tr></thead><tbody>';
+    (!ff || (ff === 'rw' && !t.rwGr) || (ff === 'ofen' && posOfen(t)) || (ff === 'kein' && !posOfen(t)) || (ff === 'sonst' && t.sonstiges) || (ff === 'leer' && !(t.schritte||[]).length)));
+  let h = '<thead><tr><th style="width:64px">Nr</th><th>Position</th><th>Kunde</th><th>Ofen-Gruppe</th><th>Arbeitsschritte</th><th class="num">Polymer je Stück</th><th>je Ofen</th><th style="width:44px"></th></tr></thead><tbody>';
   liste.forEach(t => { const pg = polymerGVon(t), x = rwGruppe(t.rwGr);
     h += '<tr class="klick" data-pid="'+esc(t.id)+'" onclick="posDialog(this.dataset.pid)" style="cursor:pointer"><td><b>'+esc(t.nr||'–')+'</b></td><td>'+esc(t.name)+(t.sonstiges? ' <span class="pill warn">Sonstiges</span>':'')+(t.ofenLang? ' <span class="pill grau">langer Ofenlauf</span>':'')+'</td><td>'+esc(t.kunde||'')+'</td>'+
       '<td style="white-space:nowrap">'+(x ? (x.ober === 'Sonst' ? '<span class="sub">'+esc(x.name)+'</span>' : '<b>'+esc(x.ober)+'</b> · '+esc(x.name)) : '<span class="pill warn">nicht zugeordnet</span>')+(POS_RW_OFFEN.includes(String(t.nr)) && t.rwGr === POS_RW[String(t.nr)] ? ' <span class="pill grau" title="Vorschlag, bitte prüfen">prüfen</span>' : '')+'</td>'+
+      '<td>'+((t.schritte||[]).length ? schr.filter(y => (t.schritte||[]).includes(y)).map(y => '<span class="pill grau" title="'+esc(y)+'" style="margin:1px 3px 1px 0">'+esc(schrittKurz(y))+'</span>').join('') : '<span class="sub">keine</span>')+'</td>'+
       '<td class="num">'+(pg ? de(pg,0)+' g' : '<span class="sub">–</span>')+'</td><td class="sub">'+esc(x ? x.ofen : (t.ofenKap||''))+'</td>'+
       '<td><button class="mini" data-pid="'+esc(t.id)+'" onclick="event.stopPropagation();posDialog(this.dataset.pid)">&#9998;</button></td></tr>'; });
-  if(!liste.length) h += '<tr><td colspan="7" class="sub" style="padding:18px">Keine Position passt zum Filter.</td></tr>';
+  if(!liste.length) h += '<tr><td colspan="8" class="sub" style="padding:18px">Keine Position passt zum Filter.</td></tr>';
   el('poTab').innerHTML = h+'</tbody>';
 }
 /* Alle Positionen als CSV (Semikolon, Excel-tauglich) – dient als Vorlage für neue Versionen der Seite */
@@ -2021,7 +2022,7 @@ function positionenCsv(){
 }
 const zahlOderLeer = v => { const x = parseFloat(String(v).replace(',','.')); return x > 0 ? x : ''; };
 function rwOptionen(sel){
-  return '<option value="">– bitte wählen –</option>'+RW_OBER.map(o => '<optgroup label="'+(o === 'Sonst' ? 'ohne Richtwert' : esc(o))+'">'+RW_GRUPPEN.filter(x => x.ober === o).map(x => '<option value="'+x.id+'"'+(x.id===sel?' selected':'')+'>'+esc(x.name)+(x.g ? ' – '+x.g+' g, '+esc(x.ofen) : '')+'</option>').join('')+'</optgroup>').join('');
+  return '<option value="">– bitte wählen –</option>'+RW_OBER.map(o => '<optgroup label="'+(o === 'Sonst' ? 'ohne Richtwert' : esc(o))+'">'+RW_GRUPPEN.filter(x => x.ober === o).map(x => '<option value="'+x.id+'"'+(x.id===sel?' selected':'')+'>'+(x.ober === 'Sonst' ? '' : esc(x.ober)+' · ')+esc(x.name)+(x.g ? ' – '+x.g+' g, '+esc(x.ofen) : '')+'</option>').join('')+'</optgroup>').join('');
 }
 function rwHinweis(){ const x = rwGruppe(el('pRw').value), e = el('pRwInfo'); if(e) e.innerHTML = x ? (x.g ? 'Polymer <b>'+x.g+' g</b> je Stück ('+esc(x.info)+') · '+esc(x.ofen)+' · max. 10 kg je Ofen ≈ <b>'+Math.floor(10000/x.g)+' Stück</b>' : esc(x.info)) : ''; }
 /* Position: nur Nummer, Kunde, Bezeichnung, Ofen-Gruppe, Eht. und Sonstiges. Art, Arbeitsschritte, Richtzeiten usw. bleiben im Hintergrund unverändert. */
@@ -2039,6 +2040,9 @@ function posDialog(id){
       '<label class="breit">Bezeichnung<input type="text" id="pName" value="'+esc(t.name)+'"'+dis+'></label>'+
       '<label class="breit">Ofen-Gruppe (Blatt „Richtwerte Polymer“)<select id="pRw"'+dis+' onchange="rwHinweis()">'+rwOptionen(t.rwGr||'')+'</select></label>'+
       '<div class="breit sub" id="pRwInfo" style="margin-top:-6px"></div>'+
+      '<label class="breit">Arbeitsschritte (was gemacht wird, Reihenfolge wie im Ablauf)</label>'+
+      '<div class="breit chips" id="pSchritte" style="margin-top:-6px">'+taetigkeiten().map(x => '<label class="chip" style="cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" data-ds="'+esc(x)+'" '+((t.schritte||[]).includes(x)?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">'+esc(x)+'</label>').join('')+'</div>'+
+      '<div class="breit sub" style="margin-top:-6px">Leer lassen = Vorschlag aus der Bezeichnung. „Ofen“ wird über die Ofen-Gruppe gesetzt bzw. entfernt.</div>'+
       '<label>Eht. (alte Verrechnungs-Einheit, Info)<input type="number" step="0.01" min="0" id="pEht" value="'+esc(t.eht===undefined?'':t.eht)+'"'+dis+'></label>'+
       '<label class="breit" style="text-transform:none;letter-spacing:0;font-size:13.5px"><input type="checkbox" id="pSonst" '+(t.sonstiges?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">Sonstiges-Position (beim Auftrag wird eine Beschreibung verlangt)</label>'+
     '</div></div><div class="fuss">'+(id && !ro? '<button class="btn rot" onclick="posLoeschen(\''+t.id+'\')">Löschen</button>':'')+'<span style="flex:1"></span>'+
@@ -2067,11 +2071,12 @@ function posSpeichern(id, neu){
   /* Hintergrundfelder bleiben; neue Positionen bekommen Art „Einzel“ und die vorgeschlagenen Arbeitsschritte */
   let t = {art:'einzel', proEinheit:'', proEigen:false, unterId:'', ofenLang:false, rwStueck:'', rwEinheit:'', materialien:[], sollJe:{}, notiz:'', ...alt, id, nr, name, kunde, sonstiges:sonst, eht: isNaN(eht) ? '' : eht,
     erstellt: alt.erstellt || new Date().toISOString(), erstelltVon: alt.erstelltVon || benutzerName()};
-  if(neu || !(t.schritte||[]).length) t.schritte = posVorbelegung({name, kunde, sonstiges:sonst});
+  const gewaehlt = [...document.querySelectorAll('#pSchritte input[data-ds]')].filter(i => i.checked).map(i => i.dataset.ds);
+  t.schritte = gewaehlt.length ? taetigkeiten().filter(x => gewaehlt.includes(x)) : posVorbelegung({name, kunde, sonstiges:sonst});
   t = rwSetzen(t, rw);
   delete t.richtwert; delete t.einheit;
   ablegen('teile', id, t);
-  notiere('Katalog', teilText(t), neu ? null : rwText(alt.rwGr)||'–', rwText(rw), neu? 'Position angelegt' : 'Position geändert');
+  notiere('Katalog', teilText(t), neu ? null : (rwText(alt.rwGr)||'–')+' | '+((alt.schritte||[]).join(' → ')||'–'), rwText(rw)+' | '+((t.schritte||[]).join(' → ')||'–'), neu? 'Position angelegt' : 'Position geändert');
   poPending = false; schliesse(); alles(); toast('Position '+nr+' gespeichert.');
 }
 function posLoeschen(id){
