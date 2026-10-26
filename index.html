@@ -1776,15 +1776,16 @@ const POS_START = [
   ['1400','Trevira Betr. Labor: Trockeneinsatz','Indorama','einzel',1,'',10.00],
   ['1401','Trevira Betr. Labor: Sonstiges','Indorama','einzel',1,'','','s'],
   ['1603','Gossner: Siebscheibe, Spannring, Schaberscheibe (pro Satz)','Gossner','satz',1,'',66.00],
-  ['1603a','Gossner: Siebscheibe einzeln','Gossner','einzel',1,'',''],
-  ['1603b','Gossner: Messer einzeln','Gossner','einzel',1,'',15.00],
-  ['1603c','Gossner: Sonstiges','Gossner','einzel',1,'',2.50,'s'],
-  ['1604','Leipa: Siebsatz reinigen (Feedblock)','LEIPA','satz',1,'',45.03],
-  ['1604a','Leipa: Dichtungsring','LEIPA','einzel',1,'',102.42],
-  ['1604b','Leipa: Druckeinstellschraube','LEIPA','einzel',1,'',15.15],
-  ['1604c','Leipa: Zwischenrohr (0,5–1 m lang)','LEIPA','einzel',1,'',31.33],
-  ['1604d','Leipa: Sonstiges','LEIPA','einzel',1,'',40.00,'s'],
+  ['1603a','Gossner: Siebscheibe einzeln','Gossner','einzel',1,'',15.00],
+  ['1603b','Gossner: Messer einzeln','Gossner','einzel',1,'',2.50],
+  ['1603c','Gossner: Sonstiges','Gossner','einzel',1,'','','s'],
+  ['1604','Leipa: Siebsatz reinigen','LEIPA','satz',1,'',45.03],
+  ['1604a','Leipa: Feedblock','LEIPA','einzel',1,'',102.42],
+  ['1604b','Leipa: Dichtungsring','LEIPA','einzel',1,'',15.15],
+  ['1604c','Leipa: Druckeinstellschraube','LEIPA','einzel',1,'',31.33],
+  ['1604d','Leipa: Zwischenrohr (0,5–1 m lang)','LEIPA','einzel',1,'',40.00],
   ['1604e','Leipa: Sonstiges','LEIPA','einzel',1,'','','s'],
+  ['1604f','Leipa: Sonstiges','LEIPA','einzel',1,'','','s'],
   ['1605','Optipack: Lochscheibe','Optipack','einzel',1,'',6.00],
   ['1605a','Optipack: Sonstiges','Optipack','einzel',1,'','','s'],
   ['1606','Sonstige Neu','Berlin JM','einzel',1,'','','s'],
@@ -1836,12 +1837,16 @@ function kundenSicherstellen(){
   if(geaendert) ablegen('einst','kunden',{liste:l});
   return geaendert;
 }
+/* Gossner/LEIPA-Unterzeilen wie auf dem Verrechnungsblatt (Stand 26.10.2026): Name, Eht. und „Sonstiges“ nachziehen */
+const POS_KORR = ['1603a','1603b','1603c','1604','1604a','1604b','1604c','1604d','1604e'];
+const posKorrNoetig = t => { if(!POS_KORR.includes(String(t.nr)) || t.blattKorr) return false;   /* nur einmal, spätere eigene Änderungen bleiben */ const p = POS_START.find(x => x[0] === String(t.nr)); return t.name !== p[1] || String(t.eht === undefined ? '' : t.eht) !== String(p[6]) || !!t.sonstiges !== (p[7] === 's'); };
 /* Kunde E/F heißen jetzt Gossner/LEIPA; 1603x = Gossner, 1604x = LEIPA, 1605x = Optipack – in Positionen und Aufträgen nachziehen */
-const posNachziehenNoetig = () => Object.values(D.teile).some(t => (KUNDEN_UMBENENNEN[t.kunde]) || (posKundeNeu(String(t.nr||'')) && t.kunde !== posKundeNeu(String(t.nr)))) || Object.values(D.auftraege).some(a => KUNDEN_UMBENENNEN[a.kunde]) || Object.values(D.teile).some(t => OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined) || kunden().some(k => KUNDEN_UMBENENNEN[k.name]) || KUNDEN_POOL.some(n => !kunden().some(k => k.name === n));
+const posNachziehenNoetig = () => Object.values(D.teile).some(posKorrNoetig) || Object.values(D.teile).some(t => (KUNDEN_UMBENENNEN[t.kunde]) || (posKundeNeu(String(t.nr||'')) && t.kunde !== posKundeNeu(String(t.nr)))) || Object.values(D.auftraege).some(a => KUNDEN_UMBENENNEN[a.kunde]) || Object.values(D.teile).some(t => OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined) || kunden().some(k => KUNDEN_UMBENENNEN[k.name]) || KUNDEN_POOL.some(n => !kunden().some(k => k.name === n));
 function posNachziehen(){
   Object.values(D.teile).forEach(t => { const neu = posKundeNeu(String(t.nr||'')) || KUNDEN_UMBENENNEN[t.kunde], kap = OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined ? OFEN_KAP_START[String(t.nr)] : null;
     if((neu && neu !== t.kunde) || kap) ablegen('teile', t.id, {...t, kunde: neu || t.kunde, ...(kap ? {ofenKap:kap} : {})}); });
   Object.values(D.auftraege).forEach(a => { if(KUNDEN_UMBENENNEN[a.kunde]) ablegen('auftraege', a.id, {...a, kunde:KUNDEN_UMBENENNEN[a.kunde]}); });
+  Object.values(D.teile).filter(posKorrNoetig).forEach(t => { const p = POS_START.find(x => x[0] === String(t.nr)), n = {...D.teile[t.id], name:p[1], eht:p[6], sonstiges:p[7] === 's', blattKorr:true}; ablegen('teile', t.id, n); notiere('Katalog', t.nr, t.name+' / '+t.eht, p[1]+' / '+p[6], 'wie Verrechnungsblatt'); });
 }
 /* legt fehlende Standard-Positionen an, ergänzt bei älteren Positionen die neuen Felder (Schritte und Eingaben bleiben) und gibt alle zurück */
 function posAnlegenIntern(){
@@ -2193,7 +2198,8 @@ const zSortiert = () => zaehlerDoc().liste.slice().sort((a, b) => String(a.datum
 const zde = (n, k) => n === null || n === undefined || isNaN(n) ? '–' : Number(n).toLocaleString('de-DE', {minimumFractionDigits:k||0, maximumFractionDigits:k||0});
 function zStromBei(t){   /* Zählerstand zum Beginn des Tages t (00:00), linear zwischen den Ablesungen; danach hochgerechnet */
   const p = zSortiert().filter(r => zNum(r.strom) !== null).map(r => ({t:zTage(r.datum), v:+r.strom})), x = zTage(t);
-  if(p.length < 2 || x < p[0].t) return null;
+  if(p.length < 2) return null;
+  if(x < p[0].t){ const a = p[0], b = p[1]; return {v:a.v - (b.v-a.v)/(b.t-a.t)*(a.t-x), geschaetzt:true}; }   /* vor der ersten Ablesung: rückwärts hochgerechnet */
   for(let i = 1; i < p.length; i++) if(x <= p[i].t) return {v:p[i-1].v + (p[i].v-p[i-1].v)*(x-p[i-1].t)/(p[i].t-p[i-1].t), geschaetzt:false};
   const a = p[p.length-2], b = p[p.length-1]; return {v:b.v + (b.v-a.v)/(b.t-a.t)*(x-b.t), geschaetzt:true};
 }
@@ -2213,14 +2219,15 @@ function zBei(k, t){
 function zRechnen(p){
   const d = (k) => zNum(p.b[k]) !== null && zNum(p.a[k]) !== null ? zNum(p.b[k]) - zNum(p.a[k]) : null;
   const s0 = zStromBei(plusTage(p.von,1)), s1 = zStromBei(plusTage(p.bis,1));
-  const r = zVerteilen(p.von, p.bis, {gas:d('gas'), o1:d('o1'), o2:d('o2'), strom: s0 && s1 ? s1.v - s0.v : null, stromGesch: !!(s1 && s1.geschaetzt)});
+  const w0 = zBei('wasser', p.von), w1 = zBei('wasser', p.bis);
+  const r = zVerteilen(p.von, p.bis, {gas:d('gas'), o1:d('o1'), o2:d('o2'), strom: s0 && s1 ? s1.v - s0.v : null, stromGesch: !!((s0 && s0.geschaetzt) || (s1 && s1.geschaetzt)), wasser: w0 && w1 ? w1.v - w0.v : null, wasserGesch: !!(w0 && w1 && (w0.geschaetzt || w1.geschaetzt))});
   r.p = p; return r;
 }
 /* Werte für einen Kalendermonat aus den Zählern (zwischen den Ablesungen anteilig nach Tagen) */
 function zMonatWerte(m){
   const [y, mo] = m.split('-').map(Number), von = plusTage(m+'-01', -1), bis = plusTage(new Date(Date.UTC(y, mo, 1)).toISOString().slice(0,10), -1);
   const w = {von, bis, geschaetzt:[]}, d = (k, txt) => { const a = zBei(k, von), b = zBei(k, bis); if(!a || !b) return null; if(a.geschaetzt || b.geschaetzt) w.geschaetzt.push(txt); return b.v - a.v; };
-  w.gas = d('gas', 'Gas gesamt'); w.o1 = d('o1', 'Ofen 1'); w.o2 = d('o2', 'Ofen 2');
+  w.gas = d('gas', 'Gas gesamt'); w.o1 = d('o1', 'Ofen 1'); w.o2 = d('o2', 'Ofen 2'); w.wasser = d('wasser', 'Wasser');
   const s0 = zStromBei(plusTage(von,1)), s1 = zStromBei(plusTage(bis,1)); w.strom = s0 && s1 ? s1.v - s0.v : null; w.stromGesch = !!((s0 && s0.geschaetzt) || (s1 && s1.geschaetzt));
   if(w.stromGesch) w.geschaetzt.push('Strom');
   return w;
@@ -2230,7 +2237,7 @@ function zMonatWerte(m){
 function zVerteilen(von, bis, w){
   const pr = energiePreise(), brenn = +zaehlerDoc().brenn > 0 ? +zaehlerDoc().brenn : 11.5, max = histMaxKg(), r = {brenn, fehlt:[], n:{}};
   r.gas = w.gas; r.o1 = w.o1; r.o2 = w.o2; r.ofen = (r.o1 !== null || r.o2 !== null) ? (r.o1||0) + (r.o2||0) : null;
-  r.strom = w.strom; r.stromGesch = !!w.stromGesch;
+  r.strom = w.strom; r.stromGesch = !!w.stromGesch; r.wasser = w.wasser === undefined ? null : w.wasser; r.wasserGesch = !!w.wasserGesch;
   r.minC = 0; r.istC = 0; r.tageIst = 0; r.kg = 0; r.stk = 0; r.tageDaten = 0; r.tage = zTage(bis) - zTage(von);
   const monate = new Set();
   for(let x = plusTage(von,1); x <= bis; x = plusTage(x,1)){
@@ -2249,26 +2256,26 @@ function zVerteilen(von, bis, w){
   zeilen.forEach(z => { if(z.ofen && !(z.last > 0) && avg > 0){ z.last = avg; z.schaetz = true; } });
   const W = zeilen.reduce((a, z) => a + (z.ofen ? z.n*z.last : 0), 0), basisN = zeilen.reduce((a, z) => a + (z.basis ? z.n : 0), 0);
   r.restGas = r.gas !== null && r.ofen !== null ? Math.max(0, r.gas - r.ofen) : null;
-  const restKosten = (r.restGas||0)*pr.gas + (r.strom||0)*pr.strom;
+  const restKosten = (r.restGas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser;
   r.restJeStk = basisN ? restKosten/basisN : null;
   r.zeilen = zeilen.sort((a, b) => (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0)).map(z => {
     const ofenM3 = z.ofen && W > 0 && r.ofen !== null ? r.ofen*z.last/W : 0;     /* m³ Ofengas je Stück */
     const rest = z.basis && r.restJeStk !== null ? r.restJeStk : 0;
     const kwh = ofenM3*brenn + (z.basis && basisN ? ((r.restGas||0)*brenn + (r.strom||0))/basisN : 0);
     return {...z, ofenM3, ofenEur: ofenM3*pr.gas, restEur: rest, eur: ofenM3*pr.gas + rest, kwh}; });
-  r.kosten = (r.gas||0)*pr.gas + (r.strom||0)*pr.strom; r.pr = pr;
+  r.kosten = (r.gas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser; r.pr = pr;
   return r;
 }
 function zeichneZaehler(){
   const sw = darfSchreiben(), dis = sw ? '' : ' disabled', doc = zaehlerDoc(), liste = zSortiert(), zr = zZeitraeume();
   const cell = (r, k, w, step) => '<td style="padding:1px"><input type="number" step="'+(step||'any')+'" value="'+(zNum(r[k]) === null ? '' : r[k])+'" style="width:'+w+'px;padding:3px;text-align:right"'+dis+' onchange="zFeld(\''+r.id+'\',\''+k+'\',this.value)"></td>';
   let h = '<hr style="margin:28px 0 14px;border:0;border-top:1px solid var(--grau-linie)"><h2>Zählerstände und Energie je Stück</h2>'+
-    '<p class="sub">Strom (Abteilung gesamt, Stand 00:00), Gas gesamt (Zähler 66015) und Ofen 1/2 (m³) mit Datum eintragen &ndash; die Ablesungen müssen nicht am Monatsende liegen. Zwischen zwei Gas-Ablesungen wird der Verbrauch mit der Historie auf die einzelnen Packs verteilt.</p>'+
+    '<p class="sub">Strom (Abteilung gesamt, Stand 00:00), Gas gesamt (Zähler 66015), Ofen 1/2 (m³) und Wasser (m³) mit Datum eintragen &ndash; die Ablesungen müssen nicht am Monatsende liegen. Zwischen zwei Gas-Ablesungen wird der Verbrauch mit der Historie auf die einzelnen Packs verteilt.</p>'+
     '<div class="werkzeuge"><label class="sub" style="display:flex;align-items:center;gap:6px">kWh je m³ Gas<input type="number" step="0.01" min="1" value="'+(+doc.brenn||11.5)+'" style="width:80px"'+dis+' onchange="zBrenn(this.value)"></label>'+
-    '<span class="sub">Preise: Strom '+de(energiePreise().strom,2)+' €/kWh · Gas '+de(energiePreise().gas,2)+' €/m³'+(D.einst.energiepreise ? '' : ' <i>(Annahme, bitte anpassen)</i>')+'</span>'+
+    '<span class="sub">Preise: Strom '+de(energiePreise().strom,2)+' €/kWh · Gas '+de(energiePreise().gas,2)+' €/m³ · Wasser '+de(energiePreise().wasser,2)+' €/m³'+(D.einst.energiepreise ? '' : ' <i>(Annahme, bitte anpassen)</i>')+'</span>'+
     (sw ? '<button class="btn sek" onclick="energiePreisDialog()">Preise ändern</button>' : '')+'<span style="flex:1"></span>'+(sw ? '<button class="btn sek" onclick="zNeu()">+ Ablesung</button>' : '')+'</div>'+
-    '<div style="overflow:auto"><table class="liste" style="font-size:12.5px"><thead><tr><th>Datum</th><th class="num">Strom kWh</th><th class="num">Gas gesamt m³</th><th class="num">Ofen 1 m³</th><th class="num">Ofen 2 m³</th><th>Notiz</th><th style="width:36px"></th></tr></thead><tbody>'+
-    liste.map(r => '<tr><td style="padding:1px"><input type="date" value="'+esc(r.datum)+'"'+dis+' onchange="zFeld(\''+r.id+'\',\'datum\',this.value)"></td>'+cell(r,'strom',110,'0.01')+cell(r,'gas',100)+cell(r,'o1',80)+cell(r,'o2',80)+
+    '<div style="overflow:auto"><table class="liste" style="font-size:12.5px"><thead><tr><th>Datum</th><th class="num">Strom kWh</th><th class="num">Gas gesamt m³</th><th class="num">Ofen 1 m³</th><th class="num">Ofen 2 m³</th><th class="num">Wasser m³</th><th>Notiz</th><th style="width:36px"></th></tr></thead><tbody>'+
+    liste.map(r => '<tr><td style="padding:1px"><input type="date" value="'+esc(r.datum)+'"'+dis+' onchange="zFeld(\''+r.id+'\',\'datum\',this.value)"></td>'+cell(r,'strom',110,'0.01')+cell(r,'gas',100)+cell(r,'o1',80)+cell(r,'o2',80)+cell(r,'wasser',90,'0.01')+
       '<td style="padding:1px"><input type="text" value="'+esc(r.notiz||'')+'" style="width:230px"'+dis+' onchange="zFeld(\''+r.id+'\',\'notiz\',this.value)"></td><td>'+(sw ? '<button class="mini" title="Zeile löschen" onclick="zWeg(\''+r.id+'\')">&times;</button>' : '')+'</td></tr>').join('')+'</tbody></table></div>';
   if(!zr.length){ el('histBox').innerHTML += h+'<p class="sub">Für eine Auswertung werden mindestens zwei Gas-Ablesungen gebraucht.</p>'; return; }
   const gew = (histZ && zr.some(z => z.id === histZ)) ? histZ : zr[zr.length-1].id; histZ = gew;
@@ -2283,8 +2290,9 @@ function zeichneZaehlerErgebnis(){
   let h = '<div class="kennzahlen" style="margin:10px 0">'+
     k2('Gas gesamt', r.gas !== null ? zde(r.gas)+' m³' : '–', r.gas !== null ? zde(r.gas*r.brenn)+' kWh · '+zde(r.gas/zr.tage*30)+' m³ je 30 Tage' : '')+
     k2('davon Ofen 1+2', r.ofen !== null ? zde(r.ofen)+' m³' : '–', r.ofen !== null && r.gas ? zde(r.ofen/r.gas*100)+' % vom Gesamtgas · Ofen 1: '+zde(r.o1)+' · Ofen 2: '+zde(r.o2) : '')+
-    k2('Strom', r.strom !== null ? zde(r.strom)+' kWh' : '–', r.strom !== null ? (r.stromGesch ? 'hochgerechnet (letzte Ablesung fehlt)' : 'zwischen den Ablesungen berechnet') : 'zu wenige Strom-Ablesungen')+
-    k2('Energiekosten', zde(r.kosten,0)+' €', 'Gas + Strom, ganze Abteilung')+
+    k2('Strom', r.strom !== null ? zde(r.strom)+' kWh' : '–', r.strom !== null ? (r.stromGesch ? 'hochgerechnet (Ablesung fehlt)' : 'zwischen den Ablesungen berechnet') : 'zu wenige Strom-Ablesungen')+
+    (r.wasser !== null ? k2('Wasser', zde(r.wasser,1)+' m³', r.wasserGesch ? 'hochgerechnet' : 'zwischen den Ablesungen berechnet') : '')+
+    k2('Energiekosten', zde(r.kosten,0)+' €', 'Gas + Strom'+(r.wasser !== null ? ' + Wasser' : '')+', ganze Abteilung')+
     k2('Chargen', r.istC > 0 ? r.istC : (r.minC || '–'), r.istC > 0 ? 'gefahren (an '+r.tageIst+' Tagen eingetragen) · mind. '+r.minC : (r.minC ? 'mindestens nötig (nach Historie)' : 'Historie für den Zeitraum fehlt'))+
     (jeCh && r.ofen ? k2('Ofengas je Charge', zde(r.ofen/jeCh.n,1)+' m³', zde(r.ofen/jeCh.n*r.brenn,0)+' kWh · '+zde(r.ofen/jeCh.n*pr.gas,1)+' € ('+jeCh.art+')') : '')+'</div>';
   const sch = doc.schaetz || {}, mk = {}; for(let x = plusTage(zr.von,1); x <= zr.bis; x = plusTage(x,1)) mk[x.slice(0,7)] = 1;
@@ -2293,9 +2301,9 @@ function zeichneZaehlerErgebnis(){
   else if(!r.stk) h += '<div class="hinweis rot">Im Zeitraum sind keine Stückzahlen in der Historie eingetragen.</div>';
   else if(r.tageDaten < zr.tage*0.5) h += '<div class="hinweis rot">Nur für '+r.tageDaten+' von '+zr.tage+' Tagen sind Stückzahlen eingetragen &ndash; die Kosten je Stück fallen dadurch zu hoch aus.</div>';
   if(r.stk){
-    h += '<div style="overflow:auto;max-height:56vh"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">Ofen €/Stück</th><th class="num">Strom + übr. Gas €/Stück</th><th class="num">Gesamt €/Stück</th><th class="num">kWh je Stück</th></tr></thead><tbody>'+
+    h += '<div style="overflow:auto;max-height:56vh"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">Ofen €/Stück</th><th class="num">Strom, übr. Gas, Wasser €/Stück</th><th class="num">Gesamt €/Stück</th><th class="num">kWh je Stück</th></tr></thead><tbody>'+
       r.zeilen.map(z => '<tr><td style="white-space:nowrap"><b>'+esc(z.nr)+'</b> <span class="sub">'+esc((z.t.name||'(nicht im Katalog)').slice(0,48))+'</span>'+(z.schaetz ? ' <span class="pill warn" title="Keine Polymer-Angabe: mit dem Durchschnitt der übrigen Ofen-Positionen gerechnet">geschätzt</span>' : '')+(z.ofen ? '' : ' <span class="pill grau">ohne Ofen</span>')+'</td><td class="num">'+zde(z.n)+'</td><td class="num">'+(z.ofen ? zde(z.ofenM3*1000,0)+' l' : '–')+'</td><td class="num">'+(z.ofen ? zde(z.ofenEur,2) : '–')+'</td><td class="num">'+(z.basis ? zde(z.restEur,2) : '–')+'</td><td class="num"><b>'+zde(z.eur,2)+'</b></td><td class="num">'+zde(z.kwh,1)+'</td></tr>').join('')+'</tbody></table></div>'+
-      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Übriges Gas und Strom werden gleichmäßig auf alle Stück verteilt (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, '+de(r.brenn,1)+' kWh je m³. Ofen-Positionen ohne Polymer-Angabe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
+      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Übriges Gas, Strom und Wasser werden gleichmäßig auf alle Stück verteilt (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(r.brenn,1)+' kWh je m³. Ofen-Positionen ohne Polymer-Angabe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
   }
   el('histZErg').innerHTML = h;
 }
@@ -2344,13 +2352,14 @@ function zeichneMonatVergleich(){
     zeile('davon Ofen 1+2', r => r.ofen !== null ? zde(r.ofen)+' m³'+(r.gas ? ' <span class="sub">('+zde(r.ofen/r.gas*100)+' %)</span>' : '') : '–')+
     zeile('übriges Gas', r => r.restGas !== null ? zde(r.restGas)+' m³' : '–')+
     zeile('Strom (Abteilung)', r => r.strom !== null ? zde(r.strom)+' kWh' : '–')+
-    zeile('Energie gesamt', r => zde((r.gas||0)*r.brenn + (r.strom||0))+' kWh')+
-    zeile('Energiekosten', r => '<b>'+zde(r.kosten,0)+' €</b>')+
+    zeile('Wasser', r => r.wasser !== null ? zde(r.wasser,1)+' m³' : '–')+
+    zeile('Energie gesamt (Gas + Strom)', r => zde((r.gas||0)*r.brenn + (r.strom||0))+' kWh')+
+    zeile('Kosten (Gas, Strom, Wasser)', r => '<b>'+zde(r.kosten,0)+' €</b>')+
     zeile('Chargen', r => r.istC > 0 ? r.istC+' <span class="sub">gefahren</span>' : (r.minC ? r.minC+' <span class="sub">mind. nötig</span>' : '–'))+
     zeile('Ofengas je Charge', r => jeCh(r) !== null ? zde(jeCh(r),1)+' m³' : '–')+
     zeile('Energiekosten je Stück (Ø)', r => jeStk(r) !== null ? '<b>'+zde(jeStk(r),2)+' €</b>' : '–')+
     '</tbody></table></div>';
-  if(w.geschaetzt.length) h += '<p class="sub" style="color:#a60">Hochgerechnet (Monat liegt nach der letzten bzw. vor der ersten Ablesung): '+[...new Set(w.geschaetzt)].join(', ')+'.</p>';
+  if(w.geschaetzt.length) h += '<p class="sub" style="color:#a60">Hochgerechnet, weil eine Ablesung fehlt (Monat liegt vor der ersten bzw. nach der letzten Ablesung) – grobe Annahme: '+[...new Set(w.geschaetzt)].join(', ')+'.</p>';
   if(!rR) h += '<p class="sub">Für diesen Monat ist kein Wert von Robin eingetragen &ndash; oben eintragen, dann erscheint die zweite Spalte.</p>';
   if(!rZ.stk) h += '<div class="hinweis rot">Für '+m.slice(5)+'/'+m.slice(0,4)+' sind noch keine Stückzahlen in der Historie eingetragen &ndash; die Kosten je Stück fehlen, bis die Tageswerte da sind.</div>';
   else if(rZ.tageDaten < rZ.tage*0.5) h += '<div class="hinweis rot">Nur für '+rZ.tageDaten+' von '+rZ.tage+' Tagen sind Stückzahlen eingetragen &ndash; die Kosten je Stück fallen dadurch zu hoch aus.</div>';
@@ -2358,7 +2367,7 @@ function zeichneMonatVergleich(){
     const zR = {}; if(rR) rR.zeilen.forEach(z => zR[z.nr] = z);
     h += '<div style="overflow:auto;max-height:56vh;margin-top:8px"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">€/Stück (Zähler)</th>'+(rR ? '<th class="num">€/Stück (Robin)</th>' : '')+'<th class="num">kWh/Stück (Zähler)</th>'+(rR ? '<th class="num">kWh/Stück (Robin)</th>' : '')+'</tr></thead><tbody>'+
       rZ.zeilen.map(z => { const y = zR[z.nr]; return '<tr><td style="white-space:nowrap"><b>'+esc(z.nr)+'</b> <span class="sub">'+esc((z.t.name||'(nicht im Katalog)').slice(0,48))+'</span>'+(z.schaetz ? ' <span class="pill warn" title="Keine Polymer-Angabe: mit dem Durchschnitt der übrigen Ofen-Positionen gerechnet">geschätzt</span>' : '')+(z.ofen ? '' : ' <span class="pill grau">ohne Ofen</span>')+'</td><td class="num">'+zde(z.n)+'</td><td class="num">'+(z.ofen ? zde(z.ofenM3*1000,0)+' l' : '–')+'</td><td class="num"><b>'+zde(z.eur,2)+'</b></td>'+(rR ? '<td class="num"><b>'+zde(y.eur,2)+'</b></td>' : '')+'<td class="num">'+zde(z.kwh,1)+'</td>'+(rR ? '<td class="num">'+zde(y.kwh,1)+'</td>' : '')+'</tr>'; }).join('')+'</tbody></table></div>'+
-      '<p class="sub" style="margin-top:8px">Ofengas nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge), übriges Gas und Strom gleichmäßig auf alle Stück (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, '+de(rZ.brenn,1)+' kWh je m³. Näherung, kein Messwert je Pack.</p>';
+      '<p class="sub" style="margin-top:8px">Ofengas nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge), übriges Gas, Strom und Wasser gleichmäßig auf alle Stück (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(rZ.brenn,1)+' kWh je m³.'+(w.geschaetzt.length ? ' Hochgerechnete Werte sind eine grobe Annahme (gleicher Tagesverbrauch wie im nächsten bekannten Zeitraum).' : '')+' Näherung, kein Messwert je Pack.</p>';
   }
   box.innerHTML = h;
 }
