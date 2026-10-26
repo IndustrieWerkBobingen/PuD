@@ -652,14 +652,14 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
 
 <!-- ===== Positionen ===== -->
 <section id="v-positionen" class="verstecke">
-  <h1>Positionen und Arbeitsschritte</h1>
-  <p class="sub">Alle Positionen vom Verrechnungsblatt, nach Nummer sortiert. <b>Klick auf eine Zeile</b> &ouml;ffnet die Position: Arbeitsschritte, Art, St&uuml;ck je Einheit, Stunden-Richtwerte und Polymer. &Auml;nderungen gelten f&uuml;r neue Auftr&auml;ge.</p>
+  <h1>Positionen</h1>
+  <p class="sub">Alle Positionen vom Verrechnungsblatt, nach Nummer sortiert. Jede Position geh&ouml;rt zu einer <b>Ofen-Gruppe</b> vom Blatt &bdquo;Richtwerte Polymer&ldquo; (Tr. Faser, Monofil, Spunbond, Berlin) &ndash; daraus kommen Polymer je St&uuml;ck und die Angabe je Ofen. <b>Klick auf eine Zeile</b> &ouml;ffnet die Position.</p>
   <div class="kennzahlen" id="poKennzahlen"></div>
-  <div class="karte" id="poGroesse" style="margin-bottom:14px"></div>
+  <div class="karte" id="poGroesse" style="margin-bottom:14px;display:none"></div>
   <div class="werkzeuge">
     <input type="text" id="poSuche" placeholder="Suchen (Nummer, Name, Kunde)" style="width:260px">
     <select id="poKunde"><option value="">alle Kunden</option></select>
-    <select id="poFilter"><option value="">alle Positionen</option><option value="poly">Polymer fehlt</option><option value="sonst">nur Sonstiges</option><option value="lang">langer Ofenlauf</option><option value="leer">ohne Arbeitsschritte</option></select>
+    <select id="poFilter"><option value="">alle Positionen</option><option value="rw">ohne Ofen-Gruppe</option><option value="ofen">geht in den Ofen</option><option value="kein">kein Ofen</option><option value="sonst">nur Sonstiges</option></select>
     <span style="margin-left:auto"></span>
     <button class="btn sek nurSchreiben" id="poStandardBtn" onclick="positionenStandard()">Standard-Positionen anlegen / aktualisieren</button>
     <button class="btn sek" onclick="positionenCsv()">Als CSV exportieren</button>
@@ -1720,6 +1720,50 @@ function mengeText(t, menge){
   if(ART_GRUPPIERT.includes(a)) return menge+' Stück ('+e+' '+ART_NAME[a][e===1?0:1]+')';
   return menge+' '+ART_NAME[a][menge===1?0:1];
 }
+/* Ofen-Richtwerte (Blatt „Richtwerte Polymer Anteile … Ausbrennen im SSO“, Stand 23.02.2021; zul. Beladung 10 kg Polymer je Ofen).
+   Jede Position bekommt genau eine Gruppe; daraus kommen Polymer je Stück und die Angabe je Ofen. */
+const RW_GRUPPEN = [
+  {id:'faser_hills', ober:'Tr. Faser', name:'Hills Pack', info:'zerlegt, alle Teile', g:1200, ofen:'6 /Ofen'},
+  {id:'faser_pla', ober:'Tr. Faser', name:'PLA Pack', info:'unzerlegt, kompl.', g:800, ofen:'12 /Ofen'},
+  {id:'faser_biko', ober:'Tr. Faser', name:'Biko Pack', info:'m. Sandfüllung, ohne Düse/VP', g:550, ofen:'11 /Baum'},
+  {id:'faser_134', ober:'Tr. Faser', name:'134er Pack', info:'zerlegt, ohne Düse', g:130, ofen:'18 /2 Körbe'},
+  {id:'mono_biko2', ober:'Monofil', name:'Biko Pack mit 2 Verdr.', info:'ohne Düse/VP', g:320, ofen:'1 /Baum'},
+  {id:'mono_biko0', ober:'Monofil', name:'Biko Pack ohne Verdr.', info:'ohne Düse/VP', g:1120, ofen:'1 /Baum'},
+  {id:'mono_134', ober:'Monofil', name:'134er Pack', info:'zerlegt, ohne Düse', g:175, ofen:'20 /Baum'},
+  {id:'mono_pmd', ober:'Monofil', name:'PMD Pack', info:'unzerlegt, alle Teile', g:300, ofen:'4 /Ständer'},
+  {id:'spun_biko', ober:'Spunbond', name:'Biko/Heterof. mit 2 Verdr.', info:'ohne Düse/VP', g:320, ofen:'11 /Baum'},
+  {id:'spun_134', ober:'Spunbond', name:'134er Pack', info:'zerlegt, ohne Düse', g:125, ofen:'18 /2 Körbe'},
+  {id:'berlin_134', ober:'Berlin', name:'134er Pack', info:'zerlegt, ohne Düse', g:90, ofen:'18 /2 Körbe'},
+  {id:'berlin_doppel', ober:'Berlin', name:'Doppelpack', info:'zerlegt, ohne Düse', g:25, ofen:'40–50 /2 Körbe'},
+  {id:'berlin_bd14', ober:'Berlin', name:'Bd.14 Pack', info:'zerlegt, Deckel+FP', g:30, ofen:'33 /2 Körbe'},
+  {id:'ofen', ober:'Sonst', name:'Ofen, ohne Richtwert', info:'geht in den Ofen, Polymer unbekannt', g:'', ofen:''},
+  {id:'kein', ober:'Sonst', name:'kein Ofen', info:'wird nicht ausgebrannt', g:'', ofen:''}];
+const RW_OBER = ['Tr. Faser','Monofil','Spunbond','Berlin','Sonst'];
+const rwGruppe = id => RW_GRUPPEN.find(x => x.id === id) || null;
+const rwText = id => { const x = rwGruppe(id); return x ? (x.ober === 'Sonst' ? x.name : x.ober+' · '+x.name) : ''; };
+/* Ofen ja/nein: über die Gruppe; Positionen ohne Gruppe wie bisher über den Arbeitsschritt „Ofen“ */
+const posOfen = t => t && t.rwGr ? t.rwGr !== 'kein' : ((t||{}).schritte||[]).includes('Ofen');
+/* Vorschlag der Zuordnung (26.10.2026, vom Nutzer zu prüfen) */
+const POS_RW = {
+  '112':'faser_hills','108':'faser_pla','907':'faser_pla','109':'faser_biko','905':'faser_biko','101':'faser_134','102':'faser_134','901':'faser_134','902':'faser_134',
+  '1301':'mono_biko2','401':'mono_134','402':'mono_134','801':'spun_biko','301':'spun_134','302':'spun_134','303':'spun_134',
+  '1708':'berlin_doppel','1709':'berlin_bd14','1710':'berlin_bd14','1711':'berlin_bd14',
+  '103':'ofen','304':'ofen','403':'ofen','903':'ofen','406':'ofen','407':'ofen','408':'ofen','904':'ofen','308':'ofen','411':'ofen','412':'ofen','802':'ofen','1701':'ofen',
+  '107':'kein','110':'kein','111':'kein','305':'kein','307':'kein','309':'kein','404':'kein','405':'kein','409':'kein','410':'kein','906':'kein','1400':'kein',
+  '1603':'kein','1603a':'kein','1603b':'kein','1605':'kein','1604':'kein','1604a':'kein','1604b':'kein','1604c':'kein','1604d':'kein',
+  '1703':'kein','1704':'kein','1706':'kein','1713':'kein','1801':'kein','1802':'kein','1803':'kein','1804':'kein',
+  '113':'kein','114':'kein','115':'kein','310':'kein','311':'kein','312':'kein','416':'kein','417':'kein','418':'kein','419':'kein','803':'kein','1302':'kein','1401':'kein',
+  '1603c':'kein','1604e':'kein','1604f':'kein','1605a':'kein','1606':'kein','1712':'kein'};
+const POS_RW_OFFEN = ['308','411','412','802','1701'];   /* unsicher: bitte prüfen */
+/* Gruppe in die Position schreiben: Polymer und Ofen-Angabe kommen aus dem Blatt, Arbeitsschritt „Ofen“ passend */
+function rwSetzen(t, id){
+  const x = rwGruppe(id); if(!x) return t;
+  const schr = (t.schritte||[]).slice(), hat = schr.includes('Ofen');
+  let neuS = schr;
+  if(id === 'kein' && hat) neuS = schr.filter(s => s !== 'Ofen');
+  if(id !== 'kein' && !hat && !t.sonstiges){ const i = schr.indexOf('Demontieren'); neuS = schr.slice(); neuS.splice(i >= 0 ? i+1 : 0, 0, 'Ofen'); }
+  return {...t, rwGr:id, polymerG:x.g, ofenKap:x.ofen, schritte:neuS};
+}
 /* [Nr, Bezeichnung, Kunde, Art, Stück je Einheit, Polymer g je Stück, alte Verrechnungs-Einheit (Eht.), Flags: s = Sonstiges] */
 const POS_START = [
   ['101','134 mm Pack mit Düse demontieren u. reinigen','Indorama','korb',9,130,12.17],
@@ -1824,7 +1868,7 @@ function posVorbelegung(p){
 function posBauen(p){
   const t = {id:'p'+p[0], nr:p[0], name:p[1], kunde:p[2], art:p[3], proEinheit:p[4], polymerG:p[5], eht:p[6], sonstiges:p[7] === 's', ofenKap: OFEN_KAP_START[p[0]] || '', ofenLang:false, rwStueck:'', rwEinheit:'', materialien:[], sollJe:{}, notiz:'',
     erstellt:new Date().toISOString(), erstelltVon:benutzerName()};
-  t.schritte = posVorbelegung(t); return t;
+  t.schritte = posVorbelegung(t); return POS_RW[p[0]] ? rwSetzen(t, POS_RW[p[0]]) : t;
 }
 /* Kunden Indorama, JM, Perlon, Berlin JM an die Plätze der Platzhalter setzen (nur wo noch "Kunde A-F" steht) */
 function kundenSicherstellen(){
@@ -1841,11 +1885,13 @@ function kundenSicherstellen(){
 const POS_KORR = ['1603a','1603b','1603c','1604','1604a','1604b','1604c','1604d','1604e'];
 const posKorrNoetig = t => { if(!POS_KORR.includes(String(t.nr)) || t.blattKorr) return false;   /* nur einmal, spätere eigene Änderungen bleiben */ const p = POS_START.find(x => x[0] === String(t.nr)); return t.name !== p[1] || String(t.eht === undefined ? '' : t.eht) !== String(p[6]) || !!t.sonstiges !== (p[7] === 's'); };
 /* Kunde E/F heißen jetzt Gossner/LEIPA; 1603x = Gossner, 1604x = LEIPA, 1605x = Optipack – in Positionen und Aufträgen nachziehen */
-const posNachziehenNoetig = () => Object.values(D.teile).some(posKorrNoetig) || Object.values(D.teile).some(t => (KUNDEN_UMBENENNEN[t.kunde]) || (posKundeNeu(String(t.nr||'')) && t.kunde !== posKundeNeu(String(t.nr)))) || Object.values(D.auftraege).some(a => KUNDEN_UMBENENNEN[a.kunde]) || Object.values(D.teile).some(t => OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined) || kunden().some(k => KUNDEN_UMBENENNEN[k.name]) || KUNDEN_POOL.some(n => !kunden().some(k => k.name === n));
+const posRwNoetig = t => t.rwGr === undefined && !!POS_RW[String(t.nr)];
+const posNachziehenNoetig = () => Object.values(D.teile).some(posRwNoetig) || Object.values(D.teile).some(posKorrNoetig) || Object.values(D.teile).some(t => (KUNDEN_UMBENENNEN[t.kunde]) || (posKundeNeu(String(t.nr||'')) && t.kunde !== posKundeNeu(String(t.nr)))) || Object.values(D.auftraege).some(a => KUNDEN_UMBENENNEN[a.kunde]) || Object.values(D.teile).some(t => OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined) || kunden().some(k => KUNDEN_UMBENENNEN[k.name]) || KUNDEN_POOL.some(n => !kunden().some(k => k.name === n));
 function posNachziehen(){
   Object.values(D.teile).forEach(t => { const neu = posKundeNeu(String(t.nr||'')) || KUNDEN_UMBENENNEN[t.kunde], kap = OFEN_KAP_START[String(t.nr)] && t.ofenKap === undefined ? OFEN_KAP_START[String(t.nr)] : null;
     if((neu && neu !== t.kunde) || kap) ablegen('teile', t.id, {...t, kunde: neu || t.kunde, ...(kap ? {ofenKap:kap} : {})}); });
   Object.values(D.auftraege).forEach(a => { if(KUNDEN_UMBENENNEN[a.kunde]) ablegen('auftraege', a.id, {...a, kunde:KUNDEN_UMBENENNEN[a.kunde]}); });
+  Object.values(D.teile).filter(posRwNoetig).forEach(t => ablegen('teile', t.id, rwSetzen(D.teile[t.id], POS_RW[String(t.nr)])));
   Object.values(D.teile).filter(posKorrNoetig).forEach(t => { const p = POS_START.find(x => x[0] === String(t.nr)), n = {...D.teile[t.id], name:p[1], eht:p[6], sonstiges:p[7] === 's', blattKorr:true}; ablegen('teile', t.id, n); notiere('Katalog', t.nr, t.name+' / '+t.eht, p[1]+' / '+p[6], 'wie Verrechnungsblatt'); });
 }
 /* legt fehlende Standard-Positionen an, ergänzt bei älteren Positionen die neuen Felder (Schritte und Eingaben bleiben) und gibt alle zurück */
@@ -1949,18 +1995,17 @@ function zeichnePositionen(){
   sel.innerHTML = '<option value="">alle Kunden</option>'+kunden().map(k => '<option>'+esc(k.name)+'</option>').join(''); sel.value = kfAlt;
   const kf = sel.value, alle = poSortiert(alleTeile());
   if(!el('poGroesse').querySelector || !el('poGroesse').querySelector('details[open]')) artenZeichnen();
-  el('poKennzahlen').innerHTML = kz(alle.length,'Positionen')+kz(alle.filter(t => t.sonstiges).length,'Sonstiges (Freitext)')+kz(alle.filter(t => polymerGVon(t)).length,'mit Polymer-Angabe')+kz(schr.length,'Arbeitsschritte');
+  el('poKennzahlen').innerHTML = kz(alle.length,'Positionen')+kz(alle.filter(t => rwGruppe(t.rwGr) && rwGruppe(t.rwGr).g).length,'mit Richtwert vom Blatt')+kz(alle.filter(t => t.rwGr === 'ofen').length,'Ofen ohne Richtwert')+kz(alle.filter(t => !t.rwGr).length,'ohne Ofen-Gruppe', alle.some(t => !t.rwGr) ? 'warn' : '');
   el('poStandardBtn').style.display = sw ? '' : 'none'; el('poStandardBtn').classList.toggle('sek', !posUpdateNoetig());
   if(sw && altPositionen().length) el('poKennzahlen').innerHTML += '<div class="hinweis" style="flex:1 1 100%;background:#FFF4D6;border:1px solid #E4B23C;border-radius:8px;padding:10px 14px"><b>'+altPositionen().length+' alte bzw. entfallene Positionen</b> (z. B. '+esc(altPositionen().slice(0,3).map(t => t.nr||t.name).join(', '))+'). Mit „Standard-Positionen anlegen / aktualisieren“ werden sie entfernt, die Kunden Gossner/LEIPA/Optipack angelegt und alle Nummern 101–1804 aktualisiert.</div>';
   if(!alle.length){ el('poTab').innerHTML = '<tbody><tr><td class="sub" style="padding:18px">Noch keine Positionen. Mit „Standard-Positionen anlegen“ kommen alle Positionen vom Verrechnungsblatt hinein (Arbeitsschritte, Einheiten und Polymer sind vorbelegt und änderbar).</td></tr></tbody>'; return; }
   const liste = alle.filter(t => (!kf || t.kunde === kf) && (!s || (t.nr+' '+t.name+' '+(t.kunde||'')).toLowerCase().includes(s)) &&
-    (!ff || (ff === 'poly' && !polymerGVon(t) && !t.sonstiges) || (ff === 'sonst' && t.sonstiges) || (ff === 'lang' && t.ofenLang) || (ff === 'leer' && !(t.schritte||[]).length)));
-  let h = '<thead><tr><th style="width:64px">Nr</th><th>Position</th><th>Kunde</th><th>Art</th><th>Arbeitsschritte</th><th class="num">Polymer</th><th style="width:44px"></th></tr></thead><tbody>';
-  liste.forEach(t => { const art = posArt(t), grp = ART_GRUPPIERT.includes(art), pg = polymerGVon(t);
+    (!ff || (ff === 'rw' && !t.rwGr) || (ff === 'ofen' && posOfen(t)) || (ff === 'kein' && !posOfen(t)) || (ff === 'sonst' && t.sonstiges)));
+  let h = '<thead><tr><th style="width:64px">Nr</th><th>Position</th><th>Kunde</th><th>Ofen-Gruppe</th><th class="num">Polymer je Stück</th><th>je Ofen</th><th style="width:44px"></th></tr></thead><tbody>';
+  liste.forEach(t => { const pg = polymerGVon(t), x = rwGruppe(t.rwGr);
     h += '<tr class="klick" data-pid="'+esc(t.id)+'" onclick="posDialog(this.dataset.pid)" style="cursor:pointer"><td><b>'+esc(t.nr||'–')+'</b></td><td>'+esc(t.name)+(t.sonstiges? ' <span class="pill warn">Sonstiges</span>':'')+(t.ofenLang? ' <span class="pill grau">langer Ofenlauf</span>':'')+'</td><td>'+esc(t.kunde||'')+'</td>'+
-      '<td style="white-space:nowrap">'+ART[art]+(grp? ' <span class="sub">'+(posUnter(t) ? esc(posUnter(t).name)+' ' : '')+'à '+posPro(t)+'</span>' : '')+'</td>'+
-      '<td>'+((t.schritte||[]).length ? schr.filter(x => (t.schritte||[]).includes(x)).map(x => '<span class="pill grau" title="'+esc(x)+'" style="margin:1px 3px 1px 0">'+esc(schrittKurz(x))+'</span>').join('') : '<span class="sub">keine</span>')+'</td>'+
-      '<td class="num">'+(pg ? de(pg,0)+' g' : '<span class="sub">–</span>')+'</td>'+
+      '<td style="white-space:nowrap">'+(x ? (x.ober === 'Sonst' ? '<span class="sub">'+esc(x.name)+'</span>' : '<b>'+esc(x.ober)+'</b> · '+esc(x.name)) : '<span class="pill warn">nicht zugeordnet</span>')+(POS_RW_OFFEN.includes(String(t.nr)) && t.rwGr === POS_RW[String(t.nr)] ? ' <span class="pill grau" title="Vorschlag, bitte prüfen">prüfen</span>' : '')+'</td>'+
+      '<td class="num">'+(pg ? de(pg,0)+' g' : '<span class="sub">–</span>')+'</td><td class="sub">'+esc(x ? x.ofen : (t.ofenKap||''))+'</td>'+
       '<td><button class="mini" data-pid="'+esc(t.id)+'" onclick="event.stopPropagation();posDialog(this.dataset.pid)">&#9998;</button></td></tr>'; });
   if(!liste.length) h += '<tr><td colspan="7" class="sub" style="padding:18px">Keine Position passt zum Filter.</td></tr>';
   el('poTab').innerHTML = h+'</tbody>';
@@ -1968,41 +2013,38 @@ function zeichnePositionen(){
 /* Alle Positionen als CSV (Semikolon, Excel-tauglich) – dient als Vorlage für neue Versionen der Seite */
 function positionenCsv(){
   const q = v => { const s = String(v === undefined || v === null ? '' : v); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
-  const kopf = ['Nr','Position','Kunde','Art','Unterart','Stück je Einheit (wirksam)','Stück je Einheit (eigener Wert)','Arbeitsschritte','Stunden je Stück (Demontieren)','Stunden je Einheit (übrige Schritte)','Polymer g je Stück','Stück je Ofengang','Langer Ofenlauf','Sonstiges','Eht. (alt, Info)'];
-  const zeilen = poSortiert(alleTeile()).map(t => { const art = posArt(t); return [t.nr, t.name, t.kunde||'', ART[art], posUnter(t) ? posUnter(t).name : '', ART_GRUPPIERT.includes(art) ? posPro(t) : '', posProEigen(t) ? t.proEinheit : '', (t.schritte||[]).join(' > '),
+  const kopf = ['Nr','Position','Kunde','Ofen-Gruppe','Art','Unterart','Stück je Einheit (wirksam)','Stück je Einheit (eigener Wert)','Arbeitsschritte','Stunden je Stück (Demontieren)','Stunden je Einheit (übrige Schritte)','Polymer g je Stück','Stück je Ofengang','Langer Ofenlauf','Sonstiges','Eht. (alt, Info)'];
+  const zeilen = poSortiert(alleTeile()).map(t => { const art = posArt(t); return [t.nr, t.name, t.kunde||'', rwText(t.rwGr), ART[art], posUnter(t) ? posUnter(t).name : '', ART_GRUPPIERT.includes(art) ? posPro(t) : '', posProEigen(t) ? t.proEinheit : '', (t.schritte||[]).join(' > '),
     t.rwStueck||'', t.rwEinheit||'', t.polymerG === undefined ? '' : t.polymerG, t.ofenKap === undefined ? '' : t.ofenKap, t.ofenLang ? 'ja' : '', t.sonstiges ? 'ja' : '', t.eht === undefined ? '' : String(t.eht).replace('.',',')].map(q).join(';'); });
   const gz = ['# Arten (Name:Stück je Einheit:Start-Std. je Einheit)'].concat(artenListe().map(x => x.name+':'+(x.gruppiert ? x.pro : 'direkt')+':'+x.rw+((x.unter||[]).length ? ' ['+unterText(x.unter)+']' : '')), ['Arbeitsschritte='+taetigkeiten().join(' > ')]).join(';');
   lade(new Blob(['﻿'+[kopf.join(';')].concat(zeilen, [gz]).join('\n')], {type:'text/csv;charset=utf-8'}), 'PackDuese_Positionen_'+heute().replace(/-/g,'')+'.csv');
 }
 const zahlOderLeer = v => { const x = parseFloat(String(v).replace(',','.')); return x > 0 ? x : ''; };
+function rwOptionen(sel){
+  return '<option value="">– bitte wählen –</option>'+RW_OBER.map(o => '<optgroup label="'+(o === 'Sonst' ? 'ohne Richtwert' : esc(o))+'">'+RW_GRUPPEN.filter(x => x.ober === o).map(x => '<option value="'+x.id+'"'+(x.id===sel?' selected':'')+'>'+esc(x.name)+(x.g ? ' – '+x.g+' g, '+esc(x.ofen) : '')+'</option>').join('')+'</optgroup>').join('');
+}
+function rwHinweis(){ const x = rwGruppe(el('pRw').value), e = el('pRwInfo'); if(e) e.innerHTML = x ? (x.g ? 'Polymer <b>'+x.g+' g</b> je Stück ('+esc(x.info)+') · '+esc(x.ofen)+' · max. 10 kg je Ofen ≈ <b>'+Math.floor(10000/x.g)+' Stück</b>' : esc(x.info)) : ''; }
+/* Position: nur Nummer, Kunde, Bezeichnung, Ofen-Gruppe, Eht. und Sonstiges. Art, Arbeitsschritte, Richtzeiten usw. bleiben im Hintergrund unverändert. */
 function posDialog(id){
   const ro = !darfSchreiben();
   const t = id ? D.teile[id] : {id:neueId(), nr:'', name:'', kunde:'', art:'einzel', proEinheit:'', polymerG:'', eht:'', sonstiges:false, ofenLang:false, schritte:[]};
   if(!t) return;
-  const art = posArt(t), dis = ro ? ' disabled' : '', l = id ? richtwertGelernt()[id] : null, rw = posRw(t);
+  const dis = ro ? ' disabled' : '';
   el('dialogBox').innerHTML =
-    '<div class="overlay" onclick="if(event.target===this)schliesse()"><div class="dialog" style="max-width:680px">'+
+    '<div class="overlay" onclick="if(event.target===this)schliesse()"><div class="dialog" style="max-width:560px">'+
     '<div class="kopf"><div><b>'+(id?(ro?'Position ':'Position bearbeiten: ')+esc(t.nr||''):'Neue Position')+'</b></div><button class="zu" onclick="schliesse()">&times;</button></div>'+
     '<div class="rumpf"><div class="formgitter">'+
       '<label>Nummer<input type="text" id="pNr" value="'+esc(t.nr)+'"'+dis+'></label>'+
       '<label>Kunde<select id="pKunde"'+dis+'>'+kundenOptionen(t.kunde||'')+'</select></label>'+
       '<label class="breit">Bezeichnung<input type="text" id="pName" value="'+esc(t.name)+'"'+dis+'></label>'+
-      '<label class="breit">Arbeitsschritte (Reihenfolge wie im Ablauf)</label>'+
-      '<div class="breit chips" id="pSchritte" style="margin-top:-6px">'+taetigkeiten().map(x => '<label class="chip" style="cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" data-ds="'+esc(x)+'" '+((t.schritte||[]).includes(x)?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">'+esc(x)+'</label>').join('')+'</div>'+
-      '<label>Art<select id="pArt"'+dis+' onchange="posArtWahl()">'+Object.keys(ART).map(k => '<option value="'+k+'"'+(k===art?' selected':'')+'>'+ART[k]+(!ART_GRUPPIERT.includes(k) && k!=='einzel' ? ' (Menge = Anzahl)':'')+'</option>').join('')+'</select></label>'+
-      '<label>Unterart<select id="pUnter"'+dis+' onchange="posUnterWahl()">'+unterOptionen(art, t.unterId)+'</select></label>'+
-      '<label>Stück je Einheit (nur bei gruppierten Arten)<input type="number" min="1" id="pPro" value="'+(ART_GRUPPIERT.includes(art) && posProEigen(t) ? t.proEinheit : '')+'" placeholder="leer = Standard der Art/Unterart ('+ART_GRUPPIERT.map(k => ART[k]+' '+artPro(k)).join(', ')+')"'+dis+'></label>'+
-      '<label>Stunden je Stück (Demontieren)<input type="number" step="0.05" min="0" id="pRs" value="'+esc(t.rwStueck||'')+'" placeholder="Start: '+de(RW_S_STD,2)+'"'+dis+'></label>'+
-      '<label>Stunden je Einheit (übrige Schritte)<input type="number" step="0.05" min="0" id="pRe" value="'+esc(t.rwEinheit||'')+'" placeholder="Start: '+de(RW_E_STD[art],2)+'"'+dis+'></label>'+
-      (l ? '<div class="breit sub" style="margin-top:-4px">Aus Ist-Zeiten gelernt ('+l.n+' Aufträge): '+(l.s!==null? 'Demontieren '+de(l.s,2)+' h/Stück':'')+(l.s!==null && l.e!==null? ' · ':'')+(l.e!==null? 'übrige Schritte '+de(l.e,2)+' h/Einheit':'')+(ro?'':' <a href="#" onclick="posGelerntUebernehmen(\''+t.id+'\');return false">in die Felder übernehmen</a>')+'</div>' : '')+
-      '<label>Polymer (g je Stück)<input type="number" min="0" id="pPoly" value="'+esc(t.polymerG===undefined?'':t.polymerG)+'" placeholder="leer = unbekannt"'+dis+'></label>'+
-      '<label>Stück je Ofengang (Richtwert, nur Info)<input type="number" min="1" id="pKap" value="'+esc(t.ofenKap===undefined?'':t.ofenKap)+'" placeholder="leer = unbekannt"'+dis+'></label>'+
-      '<label>Alte Verrechnungs-Einheit (Eht.)<input type="number" step="0.01" min="0" id="pEht" value="'+esc(t.eht===undefined?'':t.eht)+'" placeholder="nur zur Info"'+dis+'></label>'+
-      '<label class="breit" style="text-transform:none;letter-spacing:0;font-size:13.5px"><input type="checkbox" id="pLang" '+(t.ofenLang?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">Braucht den langen Ofenlauf (bis 6 h, Nachtlauf)</label>'+
-      '<label class="breit" style="text-transform:none;letter-spacing:0;font-size:13.5px"><input type="checkbox" id="pSonst" '+(t.sonstiges?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">Sonstiges-Position: beim Auftrag wird eine Beschreibung verlangt und im Reiter „Sonderfälle“ festgehalten</label>'+
+      '<label class="breit">Ofen-Gruppe (Blatt „Richtwerte Polymer“)<select id="pRw"'+dis+' onchange="rwHinweis()">'+rwOptionen(t.rwGr||'')+'</select></label>'+
+      '<div class="breit sub" id="pRwInfo" style="margin-top:-6px"></div>'+
+      '<label>Eht. (alte Verrechnungs-Einheit, Info)<input type="number" step="0.01" min="0" id="pEht" value="'+esc(t.eht===undefined?'':t.eht)+'"'+dis+'></label>'+
+      '<label class="breit" style="text-transform:none;letter-spacing:0;font-size:13.5px"><input type="checkbox" id="pSonst" '+(t.sonstiges?'checked':'')+dis+' style="width:auto;margin:0 6px 0 0">Sonstiges-Position (beim Auftrag wird eine Beschreibung verlangt)</label>'+
     '</div></div><div class="fuss">'+(id && !ro? '<button class="btn rot" onclick="posLoeschen(\''+t.id+'\')">Löschen</button>':'')+'<span style="flex:1"></span>'+
     '<button class="btn sek" onclick="schliesse()">'+(ro?'Schließen':'Abbrechen')+'</button>'+(ro?'':'<button class="btn" onclick="posSpeichern(\''+t.id+'\','+(id?'false':'true')+')">Speichern</button>')+'</div></div></div>';
-  if(!id) setTimeout(()=>el('pName').focus(),60);
+  rwHinweis();
+  if(!id) setTimeout(()=>el('pNr').focus(),60);
 }
 function unterOptionen(art, sel){
   const l = ART_UNTER[art] || [];
@@ -2019,20 +2061,18 @@ function posSpeichern(id, neu){
   if(!darfSchreiben()) return;
   const name = el('pName').value.trim(); if(!name) return alert('Bitte eine Bezeichnung eingeben.');
   const nr = el('pNr').value.trim(); if(!nr) return alert('Bitte eine Nummer eingeben.');
+  const rw = el('pRw').value; if(!rw) return alert('Bitte eine Ofen-Gruppe wählen (oder „kein Ofen“).');
   if(Object.values(D.teile).some(x => x.id !== id && String(x.nr).toLowerCase() === nr.toLowerCase())) return alert('Diese Nummer gibt es schon.');
-  const alt = D.teile[id] || {}, sonst = el('pSonst').checked, art = el('pArt').value, eht = parseFloat(String(el('pEht').value).replace(',','.'));
-  const uid = el('pUnter').value, uo = (ART_UNTER[art]||[]).find(x => x.id === uid), stdPro = uo ? Math.round(+uo.pro) : artPro(art);
-  const pv = zahlOderLeer(el('pPro').value), eig = ART_GRUPPIERT.includes(art) && +pv >= 1 && +pv !== stdPro, pro = eig ? +pv : '';
-  const gewaehlt = [...document.querySelectorAll('#pSchritte input[data-ds]')].filter(i => i.checked).map(i => i.dataset.ds);
-  const kunde = el('pKunde').value.trim();
-  const schritte = gewaehlt.length || !neu ? taetigkeiten().filter(x => gewaehlt.includes(x)) : posVorbelegung({name, kunde, sonstiges:sonst});
-  const t = {...alt, id, nr, name, kunde, art, unterId: uo ? uo.id : '', proEinheit:pro, proEigen:eig, polymerG: zahlOderLeer(el('pPoly').value), ofenKap: zahlOderLeer(el('pKap').value), eht: isNaN(eht) ? '' : eht, sonstiges: sonst, ofenLang: el('pLang').checked,
-    schritte, rwStueck: zahlOderLeer(el('pRs').value), rwEinheit: zahlOderLeer(el('pRe').value), materialien: alt.materialien||[], sollJe: alt.sollJe||{}, notiz: alt.notiz||'',
+  const alt = D.teile[id] || {}, sonst = el('pSonst').checked, eht = parseFloat(String(el('pEht').value).replace(',','.')), kunde = el('pKunde').value.trim();
+  /* Hintergrundfelder bleiben; neue Positionen bekommen Art „Einzel“ und die vorgeschlagenen Arbeitsschritte */
+  let t = {art:'einzel', proEinheit:'', proEigen:false, unterId:'', ofenLang:false, rwStueck:'', rwEinheit:'', materialien:[], sollJe:{}, notiz:'', ...alt, id, nr, name, kunde, sonstiges:sonst, eht: isNaN(eht) ? '' : eht,
     erstellt: alt.erstellt || new Date().toISOString(), erstelltVon: alt.erstelltVon || benutzerName()};
+  if(neu || !(t.schritte||[]).length) t.schritte = posVorbelegung({name, kunde, sonstiges:sonst});
+  t = rwSetzen(t, rw);
   delete t.richtwert; delete t.einheit;
   ablegen('teile', id, t);
-  notiere('Katalog', teilText(t), neu ? null : (alt.schritte||[]).join(' → ')||'–', neu ? null : schritte.join(' → ')||'–', neu? 'Position angelegt' : 'Position geändert');
-  poPending = false; schliesse(); alles(); toast('Position '+nr+' gespeichert. Gilt für neue Aufträge.');
+  notiere('Katalog', teilText(t), neu ? null : rwText(alt.rwGr)||'–', rwText(rw), neu? 'Position angelegt' : 'Position geändert');
+  poPending = false; schliesse(); alles(); toast('Position '+nr+' gespeichert.');
 }
 function posLoeschen(id){
   const t = D.teile[id]; if(!t) return;
@@ -2120,7 +2160,8 @@ function histRechnen(){
     k2('Polymer im Monat', de(a.kg,0)+' kg', a.stk+' Stück eingetragen')+
     k2('Chargen mindestens', a.min, 'je Tag aufgerundet, max. '+de(max,0)+' kg je Charge')+
     k2('Chargen gefahren', a.tageIst ? a.ist : '–', a.tageIst ? 'an '+a.tageIst+' Tagen eingetragen' : 'noch nichts eingetragen')+
-    k2('Auslastung der Chargen', a.ist > 0 ? de(a.fMitIst/a.ist*100,0)+' %' : '–', 'Füllgrad = kg Polymer ÷ '+de(max,0)+' kg')+'</div>';
+    k2('Auslastung der Chargen', a.ist > 0 ? de(a.fMitIst/a.ist*100,0)+' %' : '–', 'Füllgrad = kg Polymer ÷ '+de(max,0)+' kg')+
+    k2('Einsparpotenzial im Monat', a.min > a.monatMin ? (a.min - a.monatMin)+' Chargen' : '–', 'Reste der Tage zusammengezählt: '+a.monatMin+' statt '+a.min+' Chargen'+(a.tageIst && a.ist > a.monatMin ? ' · gegenüber Ist: '+(a.ist - a.monatMin) : ''))+'</div>';
   const zeilen = [];
   if(a.tageIst) zeilen.push('An den Tagen mit eingetragenen Chargen wurden <b>'+a.ist+'</b> gefahren, nach Gewicht wären mindestens <b>'+a.minMitIst+'</b> nötig gewesen: Unterschied <b>'+(a.ist-a.minMitIst)+'</b> Chargen.');
   if(a.min > a.monatMin) zeilen.push('Wären die Restmengen immer auf den nächsten Tag gewartet worden (alles voll gefahren), reichten im Monat rechnerisch <b>'+a.monatMin+'</b> statt '+a.min+' Chargen (Obergrenze der Einsparung, ohne Rücksicht auf Termine).');
@@ -2250,7 +2291,7 @@ function zVerteilen(von, bis, w){
   monate.forEach(m => { if(!D.einst[histId(m)]) r.fehlt.push(m); });
   /* Ofenlast je Stück = Anteil an einer Charge nach Gewicht (Polymer g ÷ max. kg je Charge) */
   const zeilen = Object.entries(r.n).map(([nr, n]) => { const t = histPos(nr) || {}, g = polymerGVon(t);
-    const last = g ? g/1000/max : 0, ofen = (t.schritte||[]).includes('Ofen'), basis = !t.sonstiges && posArt(t) !== 'tag';
+    const last = g ? g/1000/max : 0, ofen = posOfen(t), basis = !t.sonstiges && posArt(t) !== 'tag';
     return {nr, t, n, last, ofen, basis, schaetz:false}; });
   const bek = zeilen.filter(z => z.ofen && z.last > 0), sumN = bek.reduce((a, z) => a + z.n, 0), avg = sumN ? bek.reduce((a, z) => a + z.n*z.last, 0)/sumN : 0;
   zeilen.forEach(z => { if(z.ofen && !(z.last > 0) && avg > 0){ z.last = avg; z.schaetz = true; } });
