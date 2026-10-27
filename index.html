@@ -505,7 +505,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
 <!-- ===== QM ===== -->
 <section id="v-qm" class="verstecke">
   <h1>QM &ndash; Packs und Kosten je Pack</h1>
-  <p class="sub">Aus der Historie (abgerechnete Packs je Tag) und den Z&auml;hlerst&auml;nden: was im Ofen war, wie viele Ofeng&auml;nge mindestens n&ouml;tig waren und was ein Pack an Gas, Strom und Wasser kostet. Ofengas tragen nur Packs mit Ofen (nach Polymer-Gewicht), Strom, &uuml;briges Gas und Wasser werden nach der Zahl der Arbeitsschritte verteilt. Material und Personal sind nicht enthalten. Der laufende Monat z&auml;hlt erst, wenn er vorbei ist.</p>
+  <p class="sub">Aus der Historie (abgerechnete Packs je Tag) und den Z&auml;hlerst&auml;nden: was im Ofen war, wie viele Ofeng&auml;nge mindestens n&ouml;tig waren und was ein Pack an Gas, Strom und Wasser kostet. Ofengas tragen nur Packs mit Ofen (nach Polymer-Gewicht), Strom, &uuml;briges Gas und Wasser werden nach den Arbeitsschritten verteilt, die das jeweils brauchen (Katalog &rarr; Arbeitsschritte). Material und Personal sind nicht enthalten. Der laufende Monat z&auml;hlt erst, wenn er vorbei ist.</p>
   <div class="werkzeuge">
     <label>Zeitraum <select id="qmZeit"><option value="1">letzter Monat</option><option value="3">letztes Quartal</option><option value="12" selected>letzte 12 Monate</option><option value="0">alles</option></select></label>
     <label>Kunde <select id="qmKunde"><option value="">alle</option></select></label>
@@ -671,6 +671,9 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
       <h2>Arbeitsschritte</h2>
       <p class="sub">Feste Auswahlliste für Aufträge, Wochenblatt und Fähigkeiten der Mitarbeiter.</p>
       <div class="chips" id="taetListe"></div>
+      <h3 style="margin-top:16px">Was braucht welcher Schritt?</h3>
+      <p class="sub">Danach werden Strom, &uuml;briges Gas und Wasser auf die Packs verteilt (QM, Historie): ein Pack tr&auml;gt so viele Anteile, wie seine Position Schritte mit diesem Verbrauch hat. Luft (Druckluft) l&auml;uft &uuml;ber den Kompressor und z&auml;hlt deshalb beim Strom. Gas beim Ofen kommt aus den Ofenz&auml;hlern.</p>
+      <div style="overflow:auto"><table class="liste" id="medienTab" style="width:auto"></table></div>
       <div class="werkzeuge nurSchreiben" style="margin-top:12px"><input type="text" id="taetNeu" placeholder="z. B. Montage" style="width:200px" onkeydown="if(event.key==='Enter')taetHinzu()"><button class="btn" onclick="taetHinzu()">Hinzufügen</button></div>
     </div>
   </div>
@@ -941,6 +944,17 @@ const kz = (w,t,kl) => '<div class="kz'+(kl?' '+kl:'')+'"><b>'+w+'</b><span>'+t+
 const einst = (k, std) => (D.einst[k] && D.einst[k].liste !== undefined) ? D.einst[k].liste : std;
 const rollen = () => einst('rollen', ROLLEN_START);
 const taetigkeiten = () => einst('taetigkeiten', TAET_START);
+/* Was braucht ein Arbeitsschritt? Strom, Gas, Wasser, Luft (Druckluft). Luft hat keinen eigenen Zähler → zählt beim Strom (Kompressor).
+   Gas beim Schritt „Ofen“ = Ofengas (eigene Zähler); „Gas“ bei anderen Schritten = Anteil am übrigen Gas. Vorschlag zum Start, im Katalog änderbar. */
+const MEDIEN = [{id:'strom', name:'Strom'}, {id:'gas', name:'Gas'}, {id:'wasser', name:'Wasser'}, {id:'luft', name:'Luft'}];
+const MEDIEN_START = {Demontieren:['strom','luft'], Ofen:['gas','strom'], Waschen:['wasser','strom'], Strahlen:['strom','luft'], Nachwaschen:['wasser','strom'], Messen:['strom'],
+  Wirbelbett:['strom','luft'], Prüfen:['strom','luft'], Schallen:['strom','wasser'], Trockenblasen:['luft'], Bohren:['strom'], Glykolbad:['strom'], Sonstiges:[]};
+const medienJe = () => (D.einst.medien && D.einst.medien.map) || MEDIEN_START;
+const schrittMedien = t => { const m = medienJe(); return m[t] !== undefined ? m[t] : (MEDIEN_START[t] || ['strom']); };
+function medienSetzen(schritt, med, an){
+  if(!darfSchreiben()) return; const m = JSON.parse(JSON.stringify(medienJe())); taetigkeiten().forEach(t => { if(m[t] === undefined) m[t] = schrittMedien(t); });
+  const l = new Set(m[schritt] || []); an ? l.add(med) : l.delete(med); m[schritt] = MEDIEN.map(x => x.id).filter(x => l.has(x));
+  ablegen('einst','medien',{map:m}); notiere('Arbeitsschritt', schritt, null, m[schritt].join(', ')||'–', 'Verbrauch geändert'); alles(); }
 const kostenfaktoren = () => einst('kosten', KOSTEN_START);
 const materialien = () => einst('materialien', MATERIAL_START);
 const oefen = () => einst('oefen', OEFEN_START);
@@ -2351,19 +2365,24 @@ function zVerteilen(von, bis, w){
   /* Ofenlast je Stück = Anteil an einer Charge nach Gewicht (Polymer g ÷ max. kg je Charge) */
   const zeilen = Object.entries(r.n).map(([nr, n]) => { const t = histPos(nr) || {}, g = polymerGVon(t);
     const last = g ? g/1000/max : 0, ofen = posOfen(t), basis = !t.sonstiges && posArt(t) !== 'tag';
-    return {nr, t, n, last, ofen, basis, gew: basis ? Math.max(1, (t.schritte||[]).length) : 0, schaetz:false}; });
+    const sch = t.schritte||[], zaehl = f => basis ? sch.filter(f).length : 0;
+    const gS = zaehl(x => schrittMedien(x).some(m => m === 'strom' || m === 'luft')), gG = zaehl(x => x !== 'Ofen' && schrittMedien(x).includes('gas')), gW = zaehl(x => schrittMedien(x).includes('wasser'));
+    return {nr, t, n, last, ofen, basis, gew: basis ? Math.max(1, sch.length) : 0, gS, gG, gW, schaetz:false}; });
   const bek = zeilen.filter(z => z.ofen && z.last > 0), sumN = bek.reduce((a, z) => a + z.n, 0), avg = sumN ? bek.reduce((a, z) => a + z.n*z.last, 0)/sumN : 0;
   /* Teile mit Gruppe „Ofen, ohne Richtwert“ fahren nur mit (werden in Chargen gelegt, die über das Polymer ausgereizt sind) → kein Ofengas.
      Nur Positionen ganz ohne Ofen-Gruppe bekommen ersatzweise den Durchschnitt (gekennzeichnet). */
   zeilen.forEach(z => { if(z.ofen && !(z.last > 0) && !(z.t && z.t.rwGr) && avg > 0){ z.last = avg; z.schaetz = true; } });
   const W = zeilen.reduce((a, z) => a + (z.ofen ? z.n*z.last : 0), 0), basisN = zeilen.reduce((a, z) => a + z.n*z.gew, 0);   /* Gewicht = Zahl der Arbeitsschritte */
   r.restGas = r.gas !== null && r.ofen !== null ? Math.max(0, r.gas - r.ofen) : null;
-  const restKosten = (r.restGas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser;
-  r.restJeStk = basisN ? restKosten/basisN : null;   /* je Arbeitsschritt-Einheit */
+  /* je Medium: Summe der Anteile; braucht kein Schritt dieses Medium, wird ersatzweise nach allen Schritten verteilt */
+  const summe = k => zeilen.reduce((a, z) => a + z.n*z[k], 0), SS = summe('gS'), SG = summe('gG'), SW = summe('gW');
+  const anteil = (z, k, S) => S > 0 ? z[k]/S : (basisN ? z.gew/basisN : 0);
+  r.medienErsatz = [SS ? '' : 'Strom', SG ? '' : 'übriges Gas', SW ? '' : 'Wasser'].filter(Boolean);
   r.zeilen = zeilen.sort((a, b) => (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0)).map(z => {
     const ofenM3 = z.ofen && W > 0 && r.ofen !== null ? r.ofen*z.last/W : 0;     /* m³ Ofengas je Stück */
-    const rest = z.basis && r.restJeStk !== null ? r.restJeStk*z.gew : 0;
-    const kwh = ofenM3*brenn + (z.basis && basisN ? ((r.restGas||0)*brenn + (r.strom||0))*z.gew/basisN : 0);
+    const aS = z.basis ? anteil(z,'gS',SS) : 0, aG = z.basis ? anteil(z,'gG',SG) : 0, aW = z.basis ? anteil(z,'gW',SW) : 0;
+    const rest = (r.strom||0)*pr.strom*aS + (r.restGas||0)*pr.gas*aG + (r.wasser||0)*pr.wasser*aW;
+    const kwh = ofenM3*brenn + (r.restGas||0)*brenn*aG + (r.strom||0)*aS;
     return {...z, ofenM3, ofenEur: ofenM3*pr.gas, restEur: rest, eur: ofenM3*pr.gas + rest, kwh}; });
   r.kosten = (r.gas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser; r.pr = pr;
   return r;
@@ -2405,7 +2424,7 @@ function zeichneZaehlerErgebnis(){
   if(r.stk){
     h += '<div style="overflow:auto;max-height:56vh"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">Ofen €/Stück</th><th class="num">Strom, übr. Gas, Wasser €/Stück</th><th class="num">Gesamt €/Stück</th><th class="num">kWh je Stück</th></tr></thead><tbody>'+
       r.zeilen.map(z => '<tr><td style="white-space:nowrap"><b>'+esc(z.nr)+'</b> <span class="sub">'+esc((z.t.name||'(nicht im Katalog)').slice(0,48))+'</span>'+(z.schaetz ? ' <span class="pill warn" title="Keine Polymer-Angabe: mit dem Durchschnitt der übrigen Ofen-Positionen gerechnet">geschätzt</span>' : '')+(z.ofen ? '' : ' <span class="pill grau">ohne Ofen</span>')+'</td><td class="num">'+zde(z.n)+'</td><td class="num">'+(z.ofen ? zde(z.ofenM3*1000,0)+' l' : '–')+'</td><td class="num">'+(z.ofen ? zde(z.ofenEur,2) : '–')+'</td><td class="num">'+(z.basis ? zde(z.restEur,2) : '–')+'</td><td class="num"><b>'+zde(z.eur,2)+'</b></td><td class="num">'+zde(z.kwh,1)+'</td></tr>').join('')+'</tbody></table></div>'+
-      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Übriges Gas, Strom und Wasser werden nach der Zahl der Arbeitsschritte je Position verteilt (mehr Schritte = mehr Anteil) (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(r.brenn,1)+' kWh je m³. Positionen „Ofen, ohne Richtwert“ fahren mit und tragen kein Ofengas; nur Positionen ganz ohne Ofen-Gruppe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
+      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Strom, übriges Gas und Wasser werden nach den Arbeitsschritten verteilt, die das jeweils brauchen (Katalog → Arbeitsschritte) (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(r.brenn,1)+' kWh je m³. Positionen „Ofen, ohne Richtwert“ fahren mit und tragen kein Ofengas; nur Positionen ganz ohne Ofen-Gruppe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
   }
   el('histZErg').innerHTML = h;
 }
@@ -2469,7 +2488,7 @@ function zeichneMonatVergleich(){
     const zR = {}; if(rR) rR.zeilen.forEach(z => zR[z.nr] = z);
     h += '<div style="overflow:auto;max-height:56vh;margin-top:8px"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">€/Stück (Zähler)</th>'+(rR ? '<th class="num">€/Stück (Robin)</th>' : '')+'<th class="num">kWh/Stück (Zähler)</th>'+(rR ? '<th class="num">kWh/Stück (Robin)</th>' : '')+'</tr></thead><tbody>'+
       rZ.zeilen.map(z => { const y = zR[z.nr]; return '<tr><td style="white-space:nowrap"><b>'+esc(z.nr)+'</b> <span class="sub">'+esc((z.t.name||'(nicht im Katalog)').slice(0,48))+'</span>'+(z.schaetz ? ' <span class="pill warn" title="Keine Polymer-Angabe: mit dem Durchschnitt der übrigen Ofen-Positionen gerechnet">geschätzt</span>' : '')+(z.ofen ? '' : ' <span class="pill grau">ohne Ofen</span>')+'</td><td class="num">'+zde(z.n)+'</td><td class="num">'+(z.ofen ? zde(z.ofenM3*1000,0)+' l' : '–')+'</td><td class="num"><b>'+zde(z.eur,2)+'</b></td>'+(rR ? '<td class="num"><b>'+zde(y.eur,2)+'</b></td>' : '')+'<td class="num">'+zde(z.kwh,1)+'</td>'+(rR ? '<td class="num">'+zde(y.kwh,1)+'</td>' : '')+'</tr>'; }).join('')+'</tbody></table></div>'+
-      '<p class="sub" style="margin-top:8px">Ofengas nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge), übriges Gas, Strom und Wasser nach Zahl der Arbeitsschritte je Position (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(rZ.brenn,1)+' kWh je m³.'+(w.geschaetzt.length ? ' Hochgerechnete Werte sind eine grobe Annahme (gleicher Tagesverbrauch wie im nächsten bekannten Zeitraum).' : '')+' Näherung, kein Messwert je Pack.</p>';
+      '<p class="sub" style="margin-top:8px">Ofengas nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge), Strom, übriges Gas und Wasser nach den Arbeitsschritten, die das jeweils brauchen (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(rZ.brenn,1)+' kWh je m³.'+(w.geschaetzt.length ? ' Hochgerechnete Werte sind eine grobe Annahme (gleicher Tagesverbrauch wie im nächsten bekannten Zeitraum).' : '')+' Näherung, kein Messwert je Pack.</p>';
   }
   box.innerHTML = h;
 }
@@ -2480,7 +2499,7 @@ function zUebersichtMonate(){
   const m = new Set(histMonate()); zMonatListe().forEach(x => m.add(x));
   return [...m].sort().filter(x => { const w = zMonatWerte(x); return D.einst[histId(x)] && (w.gas !== null || w.strom !== null); });
 }
-function zUebersichtHtml(){ return '<h3 style="margin-top:26px">Energie je Pack – alle Monate</h3><p class="sub">Wird automatisch gerechnet, sobald für einen Monat Stückzahlen (oben) und Zählerstände da sind. Ofengas nach Gewicht (Polymer je Pack ÷ '+de(histMaxKg(),0)+' kg je Charge), Strom, übriges Gas und Wasser nach Zahl der Arbeitsschritte. Gas gesamt nach Zähler 66015.</p><div id="histUe"></div>'; }
+function zUebersichtHtml(){ return '<h3 style="margin-top:26px">Energie je Pack – alle Monate</h3><p class="sub">Wird automatisch gerechnet, sobald für einen Monat Stückzahlen (oben) und Zählerstände da sind. Ofengas nach Gewicht (Polymer je Pack ÷ '+de(histMaxKg(),0)+' kg je Charge), Strom, übriges Gas und Wasser nach den Arbeitsschritten, die das brauchen. Gas gesamt nach Zähler 66015.</p><div id="histUe"></div>'; }
 function zeichneUebersicht(){
   const box = el('histUe'); if(!box) return;
   const mon = zUebersichtMonate(); if(!mon.length){ box.innerHTML = '<p class="sub">Noch kein Monat mit Stückzahlen und Zählerständen.</p>'; return; }
@@ -2698,6 +2717,9 @@ function zeichneKatalog(){
     oefen().map(o => '<tr><td><b>'+esc(o.name)+'</b></td>'+ms.map(m => { const g = (o.gesperrt||[]).includes(m);
       return '<td style="text-align:center'+(g?';background:#FBEEED':'')+'"><input type="checkbox" '+(g?'checked':'')+' '+(sw?'':'disabled')+' data-o="'+esc(o.id)+'" data-m="'+esc(m)+'" onchange="ofenSperre(this.dataset.o,this.dataset.m,this.checked)" title="'+(g?'gesperrt':'erlaubt')+'"></td>'; }).join('')+
       '<td>'+(sw?'<button class="mini" data-o="'+esc(o.id)+'" onclick="ofenWeg(this.dataset.o)">&times;</button>':'')+'</td></tr>').join('')+'</tbody>';
+  el('medienTab').innerHTML = '<thead><tr><th>Arbeitsschritt</th>'+MEDIEN.map(x => '<th style="text-align:center">'+x.name+'</th>').join('')+'</tr></thead><tbody>'+
+    taetigkeiten().map(t => '<tr><td><b>'+esc(t)+'</b></td>'+MEDIEN.map(x => '<td style="text-align:center"><input type="checkbox" '+(schrittMedien(t).includes(x.id)?'checked':'')+(sw?'':' disabled')+' data-t="'+esc(t)+'" data-m="'+x.id+'" onchange="medienSetzen(this.dataset.t,this.dataset.m,this.checked)"></td>').join('')+'</tr>').join('')+'</tbody>'+
+    (D.einst.medien ? '' : '<tfoot><tr><td colspan="5" class="sub" style="padding:8px">Vorschlag zum Start – bitte prüfen und anpassen.</td></tr></tfoot>');
   el('taetListe').innerHTML = taetigkeiten().map(t=>'<span class="chip">'+esc(t)+(sw?'<button data-t="'+esc(t)+'" onclick="taetWeg(this.dataset.t)">&times;</button>':'')+'</span>').join('');
 }
 function matHinzu(){
@@ -3013,7 +3035,7 @@ function qmPackDaten(){
   const pos = {}, M = [], tot = {stk:0, ofenStk:0, kg:0, eur:0, kwh:0, min:0, theo:0, ist:0, istMon:0, ofenM3:0};
   monate.forEach(m => {
     const w = zMonatWerte(m), r = zVerteilen(w.von, w.bis, w), a = histAuswertung(m);
-    const o = {m, geschaetzt: w.geschaetzt.length > 0, tageDaten: r.tageDaten, tage: r.tage, stk:0, ofenStk:0, kg:0, eur:0, min:a.min, theo:a.monatMin, ist: a.tageIst ? a.ist : null, kgAlle:a.kg, ofen:r.ofen, gas:r.gas, strom:r.strom, wasser:r.wasser};
+    const o = {m, geschaetzt: w.geschaetzt.length > 0, tageDaten: r.tageDaten, tage: r.tage, stk:0, ofenStk:0, kg:0, eur:0, min:a.min, theo:a.monatMin, ist: a.tageIst ? a.ist : null, ersatz: r.medienErsatz||[], kgAlle:a.kg, ofen:r.ofen, gas:r.gas, strom:r.strom, wasser:r.wasser};
     r.zeilen.forEach(z => { const t = z.t || {}; if(kunde && t.kunde !== kunde) return;
       const g = polymerGVon(t) || 0, kg = z.ofen ? z.n*g/1000 : 0, p = pos[z.nr] = pos[z.nr] || {nr:z.nr, t, n:0, ofenN:0, kg:0, eur:0, kwh:0, ofenM3:0, ofen:false};
       p.n += z.n; p.kg += kg; p.eur += z.n*z.eur; p.kwh += z.n*z.kwh; p.ofenM3 += z.n*z.ofenM3; if(z.ofen){ p.ofenN += z.n; p.ofen = true; }
@@ -3038,6 +3060,7 @@ function zeichneQMPacks(){
     k2('Ø je Pack', t.stk ? zde(t.eur/t.stk,2)+' €' : '–', t.ofenStk ? 'mit Ofen '+zde(d.pos.filter(p => p.ofen).reduce((s,p)=>s+p.eur,0)/t.ofenStk,2)+' € · ohne '+(t.stk-t.ofenStk ? zde(d.pos.filter(p => !p.ofen).reduce((s,p)=>s+p.eur,0)/(t.stk-t.ofenStk),2)+' €' : '–') : '');
   const hw = [];
   if(d.M.some(o => o.geschaetzt)) hw.push('Mit ~ markierte Monate: Zählerstand hochgerechnet, weil eine Ablesung fehlt.');
+  const ers = [...new Set(d.M.flatMap(o => o.ersatz))]; if(ers.length) hw.push('Kein Arbeitsschritt ist für '+ers.join(', ')+' angehakt – das wird deshalb gleichmäßig nach allen Arbeitsschritten verteilt (Katalog → Arbeitsschritte → „Was braucht welcher Schritt?“).');
   if(d.M.some(o => o.tageDaten < o.tage*0.5)) hw.push('Monate mit ! haben für weniger als die Hälfte der Tage Stückzahlen – die Kosten je Pack fallen dort zu hoch aus.');
   const ohnePoly = d.pos.filter(p => p.ofen && !polymerGVon(p.t)).reduce((s,p) => s+p.n, 0); if(ohnePoly) hw.push(ohnePoly+' Packs mit Ofen haben keinen Richtwert (kaum Polymer) – sie fahren in den Chargen mit und tragen kein Ofengas, nur Strom, übriges Gas und Wasser.');
   el('qmPHinweis').innerHTML = hw.length ? '<div class="hinweis gelb">'+hw.join(' ')+'</div>' : '';
