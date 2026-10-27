@@ -75,6 +75,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blau);bo
 table.liste{width:100%;border-collapse:collapse;font-size:13px}
 table.liste th{background:var(--blau-dunkel);color:#fff;text-align:left;padding:7px 9px;
   font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2}
+table.liste:not(.nosort) thead th{cursor:pointer;user-select:none} table.liste:not(.nosort) thead th:hover{text-decoration:underline}
+table.liste th.sortAuf::after{content:' \25B2';font-size:9px} table.liste th.sortAb::after{content:' \25BC';font-size:9px}
 table.liste td{border-bottom:1px solid #EEF1F4;padding:7px 9px;vertical-align:middle;transition:background var(--weich)}
 table.liste tr:hover td{background:#F3F7FB}
 table.liste td.num,table.liste th.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -2200,7 +2202,7 @@ function zeichneHistorie(){
   const haelfte = (von, bis, mitSumme) => {
     const tage = []; for(let d = von; d <= bis; d++) tage.push(d);
     const st = 'position:sticky;left:0;background:#fff;z-index:1';
-    let t = '<div style="overflow:auto;max-height:68vh;margin-top:10px"><table class="liste histTab" style="font-size:12.5px;width:auto"><thead><tr><th style="position:sticky;left:0;background:var(--blau-dunkel);z-index:2;min-width:230px">Position</th>'+
+    let t = '<div style="overflow:auto;max-height:68vh;margin-top:10px"><table class="liste histTab nosort" style="font-size:12.5px;width:auto"><thead><tr><th style="position:sticky;left:0;background:var(--blau-dunkel);z-index:2;min-width:230px">Position</th>'+
       tage.map(d => '<th class="num" style="min-width:44px;padding:5px 3px;'+(['So','Sa'].includes(wt(d))?'color:#FFD27A':'')+'">'+d+'<br><span style="font-weight:400;font-size:10.5px">'+wt(d)+'</span></th>').join('')+(mitSumme ? '<th class="num">Summe</th>' : '')+'</tr></thead><tbody>';
     nrs.forEach(nr => { const tp = histPos(nr), sum = Object.values(doc.tage||{}).reduce((a, z) => a + (+z[nr]||0), 0);
       t += '<tr><td style="'+st+';white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="'+esc(tp ? tp.name : '')+'"><b>'+esc(nr)+'</b> <span class="sub">'+esc(tp ? tp.name : '(Position nicht im Katalog)')+(tp && polymerGVon(tp) ? '' : ' · ohne Polymer')+'</span></td>'+
@@ -4130,6 +4132,42 @@ function zeichneAnsicht(z){
   ({uebersicht:zeichneUebersicht, zeiten:zeichneWoche, auftraege:zeichneAuftraege, planung:zeichnePlanung, urlaub:zeichneUrlaub,
     qm:zeichneQM, mitarbeiter:zeichneMitarbeiter, verwaltung:zeichneVerwaltung, archiv:zeichneArchiv, historie:zeichneHistorie, produktion:zeichneProduktion, kalender:zeichneKalender, katalog:zeichneKatalog, positionen:zeichnePositionen, ofen:zeichneOfenplan, sonderfaelle:zeichneSonderfaelle}[z] || (()=>{}))();
 }
+/* ---------- Alle Tabellen sortierbar: Klick auf Spaltenkopf (nochmal = umgekehrt). Gilt für jede table.liste außer .nosort ---------- */
+const tabSort = {};
+const MON3 = ['jan','feb','mär','apr','mai','jun','jul','aug','sep','okt','nov','dez'];
+function zellWert(td){
+  if(!td) return null; const i = td.querySelector('input,select');
+  let s = i ? (i.type === 'checkbox' ? (i.checked ? '1' : '0') : String(i.value)) : td.textContent; s = s.replace(/ /g,' ').trim();
+  if(!s || s === '–' || s === '-') return null;
+  let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/); if(m) return {n: +m[3]*10000 + +m[2]*100 + +m[1]};
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return {n: +m[1]*10000 + +m[2]*100 + +m[3]};
+  m = s.toLowerCase().match(/^([a-zä]{3})[a-zä]*\.?\s+(\d{2,4})\b/); if(m && MON3.includes(m[1])){ const j = +m[2] < 100 ? 2000 + +m[2] : +m[2]; return {n: j*100 + MON3.indexOf(m[1]) + 1}; }
+  m = s.replace(/\s+/g,'').match(/^[-+]?\d{1,3}(\.\d{3})+(,\d+)?|^[-+]?\d+(,\d+)?/); if(m) return {n: parseFloat(m[0].replace(/\./g,'').replace(',','.'))};
+  return {t: s.toLowerCase()};
+}
+const tabKey = t => (t.id ? 'id:'+t.id : (t.closest('section,.dialog') ? (t.closest('section') ? t.closest('section').id : 'dlg') : '')+':'+[...t.querySelectorAll('thead th')].map(x => x.textContent.trim()).join('|'));
+function tabSortieren(t, idx, dir){
+  const tb = t.tBodies[0]; if(!tb) return; const rows = [...tb.rows]; if(rows.length < 2) return;
+  const fest = rows.filter(r => r.cells.length === 1 && r.cells[0].colSpan > 1), lose = rows.filter(r => !fest.includes(r));
+  lose.map((r, i) => ({r, i, v: zellWert(r.cells[idx])})).sort((a, b) => {
+    if(a.v === null && b.v === null) return a.i - b.i; if(a.v === null) return 1; if(b.v === null) return -1;
+    let c = (a.v.n !== undefined && b.v.n !== undefined) ? a.v.n - b.v.n : String(a.v.n !== undefined ? a.v.n : a.v.t).localeCompare(String(b.v.n !== undefined ? b.v.n : b.v.t), 'de', {numeric:true});
+    return (c || a.i - b.i) * (c ? dir : 1); }).forEach(x => tb.appendChild(x.r));
+  fest.forEach(r => tb.appendChild(r));
+  [...t.querySelectorAll('thead th')].forEach((th, i) => { th.classList.toggle('sortAuf', i === idx && dir > 0); th.classList.toggle('sortAb', i === idx && dir < 0); });
+}
+document.addEventListener('click', e => {
+  const th = e.target.closest && e.target.closest('table.liste thead th'); if(!th || e.target.closest('input,select,button,a')) return;
+  const t = th.closest('table'); if(t.classList.contains('nosort') || !t.tBodies[0]) return;
+  const tr = th.parentElement; if(t.tHead.rows.length > 1 || th.colSpan > 1) return;
+  const idx = [...tr.cells].indexOf(th), key = tabKey(t), alt = tabSort[key];
+  const dir = alt && alt.idx === idx ? -alt.dir : (zellWert((t.tBodies[0].rows[0]||{cells:[]}).cells[idx]) || {}).n !== undefined ? -1 : 1;   /* Zahlen zuerst absteigend, Text aufsteigend */
+  tabSort[key] = {idx, dir}; tabSortieren(t, idx, dir);
+});
+/* nach neuem Zeichnen die gewählte Sortierung wieder anwenden */
+new MutationObserver(() => { if(!Object.keys(tabSort).length) return;
+  document.querySelectorAll('table.liste').forEach(t => { const s = tabSort[tabKey(t)]; if(!s) return; const th = t.querySelectorAll('thead th')[s.idx];
+    if(th && !th.classList.contains(s.dir > 0 ? 'sortAuf' : 'sortAb')) tabSortieren(t, s.idx, s.dir); }); }).observe(document.body, {childList:true, subtree:true});
 function alles(){ energieCache = null; artenAnwenden(); mobilKlasse(); if(mobilAn()){ zeichneMobil(); return; } if(rolle !== 'keine') zeichneAnsicht(aktAns); }
 function schliesse(){ el('dialogBox').innerHTML = ''; }
 function menuUm(){ const auf = !document.querySelector('nav').classList.contains('offen'); document.querySelector('nav').classList.toggle('offen', auf); el('menuSchatten').classList.toggle('offen', auf); document.body.classList.toggle('menuoffen', auf); }
