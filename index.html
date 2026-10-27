@@ -519,7 +519,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
   <div class="qmGitter">
     <div class="karte">
       <h2>Strom, Wasser, Gas</h2>
-      <p class="sub">Monatsverbr&auml;uche (Z&auml;hlerst&auml;nde). Das Tool verteilt sie nach den Ofenstunden auf die Auftr&auml;ge. Balken = Kosten je Monat.</p>
+      <p class="sub">Monatsverbr&auml;uche &ndash; automatisch aus den Z&auml;hlerst&auml;nden im Reiter Historie (<i>auto</i>; &bdquo;~&ldquo; = hochgerechnet, weil eine Ablesung fehlt). Von Hand eingetragene Monate haben Vorrang. Balken = Kosten je Monat.</p>
       <div class="chips" id="qmEnSchalter" style="margin:4px 0 8px"></div>
       <div id="qmChartEnergie"></div>
       <div id="qmEnergiePreise" class="sub" style="margin:6px 0 10px"></div>
@@ -948,7 +948,15 @@ function schritteFuer(aid, extra){
 }
 
 const energiePreise = () => ({...PREISE_START, ...(D.einst.energiepreise||{})});
-const energieMonate = () => (D.einst.energie && D.einst.energie.monate) || {};
+const energieMonateHand = () => (D.einst.energie && D.einst.energie.monate) || {};
+/* Monatswerte Strom/Wasser/Gas automatisch aus den Zählerständen (Historie); abgeschlossene Monate; von Hand eingetragene Monate haben Vorrang */
+function energieMonateZaehler(){
+  const r = {}, jetzt = heute().slice(0,7);
+  try { zMonatListe().filter(m => m < jetzt).forEach(m => { const w = zMonatWerte(m); if(w.gas === null && w.strom === null && w.wasser === null) return;
+    r[m] = {strom: w.strom !== null ? Math.round(w.strom) : 0, gas: w.gas !== null ? Math.round(w.gas) : 0, wasser: w.wasser !== null ? Math.round(w.wasser*10)/10 : 0, auto:true, geschaetzt: w.geschaetzt.length > 0}; }); } catch(e){}
+  return r;
+}
+const energieMonate = () => ({...energieMonateZaehler(), ...energieMonateHand()});
 let energieCache = null;
 /* Verteilung der Monatsverbräuche auf die Aufträge: nach den Stunden, die in dem Monat auf Aufträgen mit Ofen gebucht wurden
    (gibt es keine Ofenstunden, nach allen Stunden). */
@@ -2142,11 +2150,11 @@ function zeichneHistorie(){
     '<div class="werkzeuge"><button class="btn sek" onclick="histMonatVers(-1)">&larr;</button><input type="month" id="histM" value="'+m+'" onchange="histMonatWahl(this.value)"><button class="btn sek" onclick="histMonatVers(1)">&rarr;</button>'+
     '<span style="flex:1"></span><button class="btn sek" onclick="histExport()">CSV exportieren</button>'+(sw ? '<button class="btn sek" onclick="el(\'histDatei\').click()">CSV importieren</button><input type="file" id="histDatei" accept=".csv,text/csv" style="display:none" onchange="histImport(this)">' : '')+'</div>'+
     '<div id="histSumme"></div>';
-  /* wie auf dem Verrechnungsblatt: zwei Hälften untereinander (1.–16. und 17.–Monatsende), Summe in der zweiten */
+  /* alle Tage nebeneinander in einer Tabelle (Nutzerwunsch 27.10.), Summe am Ende */
   const haelfte = (von, bis, mitSumme) => {
     const tage = []; for(let d = von; d <= bis; d++) tage.push(d);
     const st = 'position:sticky;left:0;background:#fff;z-index:1';
-    let t = '<div style="overflow:auto;margin-top:10px"><table class="liste histTab" style="font-size:12.5px;width:auto"><thead><tr><th style="position:sticky;left:0;background:var(--blau-dunkel);z-index:2;min-width:230px">Position · '+von+'.–'+bis+'.</th>'+
+    let t = '<div style="overflow:auto;max-height:68vh;margin-top:10px"><table class="liste histTab" style="font-size:12.5px;width:auto"><thead><tr><th style="position:sticky;left:0;background:var(--blau-dunkel);z-index:2;min-width:230px">Position</th>'+
       tage.map(d => '<th class="num" style="min-width:44px;padding:5px 3px;'+(['So','Sa'].includes(wt(d))?'color:#FFD27A':'')+'">'+d+'<br><span style="font-weight:400;font-size:10.5px">'+wt(d)+'</span></th>').join('')+(mitSumme ? '<th class="num">Summe</th>' : '')+'</tr></thead><tbody>';
     nrs.forEach(nr => { const tp = histPos(nr), sum = Object.values(doc.tage||{}).reduce((a, z) => a + (+z[nr]||0), 0);
       t += '<tr><td style="'+st+';white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="'+esc(tp ? tp.name : '')+'"><b>'+esc(nr)+'</b> <span class="sub">'+esc(tp ? tp.name : '(Position nicht im Katalog)')+(tp && polymerGVon(tp) ? '' : ' · ohne Polymer')+'</span></td>'+
@@ -2156,7 +2164,7 @@ function zeichneHistorie(){
       '<tr><td style="'+st+'"><b>Chargen mindestens (max. '+de(histMaxKg(),0)+' kg je Charge)</b></td>'+tage.map(d => '<td class="num" id="hm-'+histTT(d)+'"></td>').join('')+(mitSumme ? '<td class="num" id="hm-sum"></td>' : '')+'</tr>'+
       '<tr><td style="'+st+'"><b>Chargen gefahren (Ist)</b></td>'+tage.map(d => { const v = (doc.chargen||{})[histTT(d)]; return '<td style="padding:1px"><input type="number" min="0" data-tt="'+histTT(d)+'" value="'+(v===undefined||v===''?'':v)+'" style="width:42px;padding:3px;text-align:right"'+dis+' onchange="histCharge(this)"></td>'; }).join('')+(mitSumme ? '<td class="num" id="hi-sum"></td>' : '')+'</tr></tbody></table></div>';
     return t; };
-  h += haelfte(1, 16, false) + haelfte(17, n, true);
+  h += haelfte(1, n, true);
   if(sw){ const frei = Object.values(D.teile).filter(t => !nrs.includes(String(t.nr))); h += '<div class="werkzeuge" style="margin-top:10px"><select id="histPlus"><option value="">Weitere Position in die Tabelle holen …</option>'+poSortiert(frei).map(t => '<option value="'+esc(t.nr)+'">'+esc(t.nr)+' '+esc(t.name)+'</option>').join('')+'</select><button class="btn sek" onclick="histPlus()">Hinzufügen</button></div>'; }
   el('histBox').innerHTML = h; histRechnen(); zeichneZaehler();
 }
@@ -2342,8 +2350,8 @@ function zeichneZaehler(){
       '<td style="padding:1px"><input type="text" value="'+esc(r.notiz||'')+'" style="width:230px"'+dis+' onchange="zFeld(\''+r.id+'\',\'notiz\',this.value)"></td><td>'+(sw ? '<button class="mini" title="Zeile löschen" onclick="zWeg(\''+r.id+'\')">&times;</button>' : '')+'</td></tr>').join('')+'</tbody></table></div>';
   if(!zr.length){ el('histBox').innerHTML += h+'<p class="sub">Für eine Auswertung werden mindestens zwei Gas-Ablesungen gebraucht.</p>'; return; }
   const gew = (histZ && zr.some(z => z.id === histZ)) ? histZ : zr[zr.length-1].id; histZ = gew;
-  h += '<h3 style="margin-top:22px">Auswertung zwischen zwei Ablesungen (Zähler 66015)</h3><div class="werkzeuge"><select id="histZSel" onchange="histZ=this.value;zeichneZaehlerErgebnis()">'+zr.map(z => '<option value="'+z.id+'"'+(z.id===gew?' selected':'')+'>'+dmy(z.von)+' &rarr; '+dmy(z.bis)+' ('+z.tage+' Tage)</option>').join('')+'</select></div><div id="histZErg"></div>'+zMonatHtml();
-  el('histBox').innerHTML += h; zeichneZaehlerErgebnis(); zeichneMonatVergleich();
+  h += '<h3 style="margin-top:22px">Auswertung zwischen zwei Ablesungen (Zähler 66015)</h3><div class="werkzeuge"><select id="histZSel" onchange="histZ=this.value;zeichneZaehlerErgebnis()">'+zr.map(z => '<option value="'+z.id+'"'+(z.id===gew?' selected':'')+'>'+dmy(z.von)+' &rarr; '+dmy(z.bis)+' ('+z.tage+' Tage)</option>').join('')+'</select></div><div id="histZErg"></div>'+zMonatHtml()+zUebersichtHtml();
+  el('histBox').innerHTML += h; zeichneZaehlerErgebnis(); zeichneMonatVergleich(); zeichneUebersicht();
 }
 let histZ = '';
 function zeichneZaehlerErgebnis(){
@@ -2435,6 +2443,45 @@ function zeichneMonatVergleich(){
   box.innerHTML = h;
 }
 
+/* ---------- Übersicht aller Monate: Energie je Pack automatisch aus Historie (Stück je Tag) und Zählerständen ---------- */
+let histUeWert = 'eur';
+function zUebersichtMonate(){
+  const m = new Set(histMonate()); zMonatListe().forEach(x => m.add(x));
+  return [...m].sort().filter(x => { const w = zMonatWerte(x); return D.einst[histId(x)] && (w.gas !== null || w.strom !== null); });
+}
+function zUebersichtHtml(){ return '<h3 style="margin-top:26px">Energie je Pack – alle Monate</h3><p class="sub">Wird automatisch gerechnet, sobald für einen Monat Stückzahlen (oben) und Zählerstände da sind. Ofengas nach Gewicht (Polymer je Pack ÷ '+de(histMaxKg(),0)+' kg je Charge), Strom, übriges Gas und Wasser gleichmäßig je Pack. Gas gesamt nach Zähler 66015.</p><div id="histUe"></div>'; }
+function zeichneUebersicht(){
+  const box = el('histUe'); if(!box) return;
+  const mon = zUebersichtMonate(); if(!mon.length){ box.innerHTML = '<p class="sub">Noch kein Monat mit Stückzahlen und Zählerständen.</p>'; return; }
+  const R = mon.map(m => { const w = zMonatWerte(m), r = zVerteilen(w.von, w.bis, w), a = histAuswertung(m); return {m, w, r, a, ch: a.tageIst ? a.ist : a.min}; });
+  const MN = m => MON[+m.slice(5,7)-1].slice(0,3)+' '+m.slice(2,4);
+  const zeile = (t, f, b) => '<tr><td style="white-space:nowrap">'+(b ? '<b>'+t+'</b>' : t)+'</td>'+R.map(x => '<td class="num">'+f(x)+'</td>').join('')+'</tr>';
+  let h = '<div style="overflow:auto"><table class="liste" style="font-size:12.5px;width:auto;min-width:60%"><thead><tr><th>Monat</th>'+R.map(x => '<th class="num">'+MN(x.m)+(x.w.geschaetzt.length ? ' ~' : '')+'</th>').join('')+'</tr></thead><tbody>'+
+    zeile('Packs (Stück)', x => zde(x.r.stk))+
+    zeile('Tage mit Stückzahlen', x => x.r.tageDaten+' / '+x.r.tage+(x.r.tageDaten < x.r.tage*0.5 ? ' <span style="color:#a60">!</span>' : ''))+
+    zeile('Polymer im Ofen', x => zde(x.a.kg)+' kg')+
+    zeile('Chargen '+(R.some(x => x.a.tageIst) ? '(Ist, sonst mind.)' : 'mindestens'), x => x.ch+(x.a.tageIst ? '' : ' <span class="sub">min</span>'))+
+    zeile('Einsparpotenzial (Reste)', x => x.a.min > x.a.monatMin ? (x.a.min - x.a.monatMin) : '–')+
+    zeile('Gas gesamt (66015)', x => x.r.gas !== null ? zde(x.r.gas)+' m³' : '–')+
+    zeile('davon Ofen 1+2', x => x.r.ofen !== null ? zde(x.r.ofen)+' m³' : '–')+
+    zeile('Strom (Abteilung)', x => x.r.strom !== null ? zde(x.r.strom)+' kWh' : '–')+
+    zeile('Wasser', x => x.r.wasser !== null ? zde(x.r.wasser,1)+' m³' : '–')+
+    zeile('Ofengas je Charge', x => x.r.ofen && x.ch ? zde(x.r.ofen/x.ch,1)+' m³' : '–', true)+
+    zeile('Ofengas je kg Polymer', x => x.r.ofen && x.a.kg ? zde(x.r.ofen/x.a.kg,2)+' m³' : '–', true)+
+    zeile('Strom je Pack', x => x.r.strom !== null && x.r.stk ? zde(x.r.strom/x.r.stk,2)+' kWh' : '–')+
+    zeile('Energiekosten je Pack (Ø)', x => x.r.stk ? zde(x.r.zeilen.reduce((s, z) => s + z.n*z.eur, 0)/x.r.stk,2)+' €' : '–', true)+
+    zeile('Energiekosten gesamt', x => zde(x.r.kosten,0)+' €')+
+    '</tbody></table></div>';
+  if(R.some(x => x.w.geschaetzt.length)) h += '<p class="sub" style="color:#a60">~ = Zählerstand hochgerechnet (Monat vor der ersten bzw. nach der letzten Ablesung) – grobe Annahme.</p>';
+  /* je Position und Monat */
+  const nrs = [...new Set(R.flatMap(x => x.r.zeilen.map(z => z.nr)))].sort((a,b) => (parseInt(a,10)||0) - (parseInt(b,10)||0) || a.localeCompare(b,'de',{numeric:true}));
+  const wert = {eur:['€ je Pack', z => zde(z.eur,2)], kwh:['kWh je Pack', z => zde(z.kwh,1)], gas:['Ofengas je Pack (Liter)', z => z.ofen ? zde(z.ofenM3*1000,0) : '–'], n:['Stück', z => zde(z.n)]};
+  h += '<div class="werkzeuge" style="margin-top:14px"><b>Je Position:</b><select onchange="histUeWert=this.value;zeichneUebersicht()">'+Object.entries(wert).map(([k,v]) => '<option value="'+k+'"'+(k===histUeWert?' selected':'')+'>'+v[0]+'</option>').join('')+'</select></div>'+
+    '<div style="overflow:auto;max-height:60vh"><table class="liste" style="font-size:12.5px;width:auto;min-width:60%"><thead><tr><th>Position</th><th>Ofen-Gruppe</th>'+R.map(x => '<th class="num">'+MN(x.m)+'</th>').join('')+'</tr></thead><tbody>'+
+    nrs.map(nr => { const t = histPos(nr) || {}; return '<tr><td style="white-space:nowrap"><b>'+esc(nr)+'</b> <span class="sub">'+esc((t.name||'').slice(0,40))+'</span></td><td class="sub" style="white-space:nowrap">'+esc(rwText(t.rwGr)||'')+'</td>'+
+      R.map(x => { const z = x.r.zeilen.find(y => y.nr === nr); return '<td class="num">'+(z ? wert[histUeWert][1](z) : '')+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table></div>';
+  box.innerHTML = h;
+}
 /* ---------- Ofenplan: Läufe aus dem Auftragsbestand (max. Polymermenge je Lauf) ---------- */
 const OFEN_START_EINST = {maxKg:10, stdKg:1, nacht:true, tagLaeufe:2};
 const ofenEinst = () => ({...OFEN_START_EINST, ...(D.einst.ofenplan||{})});
@@ -3151,8 +3198,8 @@ function zeichneEnergie(grenze){
   el('qmChartEnergie').innerHTML = enSicht().length ? chartEnergie(keys) : '<p class="sub">Alle Energiearten ausgeblendet.</p>';
   el('qmEnergiePreise').innerHTML = 'Preise: '+enSicht().map(x => x.name+' '+de(pr[x.id],2)+' €/'+x.einheit).join(' · ')+(D.einst.energiepreise? '' : ' <i>(Normalwerte zum Start, bitte anpassen)</i>');
   el('qmEnergieBody').innerHTML = keys.slice().reverse().map(k => { const w = mon[k];
-    return '<tr><td><b>'+MON[+k.slice(5,7)-1]+' '+k.slice(0,4)+'</b></td>'+enSicht().map(x=>'<td class="num">'+de(w[x.id]||0,0)+'</td>').join('')+'<td class="num"><b>'+de(energieMonatKostenSicht(w),0)+' €</b></td>'+
-      '<td>'+(darfSchreiben()? '<button class="mini" onclick="energieDialog(\''+k+'\')">&#9998;</button> <button class="mini" onclick="energieLoeschen(\''+k+'\')">&times;</button>':'')+'</td></tr>'; }).join('')
+    return '<tr><td><b>'+MON[+k.slice(5,7)-1]+' '+k.slice(0,4)+'</b>'+(w.auto ? ' <span class="pill grau">auto'+(w.geschaetzt ? ' ~' : '')+'</span>' : '')+'</td>'+enSicht().map(x=>'<td class="num">'+de(w[x.id]||0,0)+'</td>').join('')+'<td class="num"><b>'+de(energieMonatKostenSicht(w),0)+' €</b></td>'+
+      '<td>'+(darfSchreiben()? '<button class="mini" title="von Hand überschreiben" onclick="energieDialog(\''+k+'\')">&#9998;</button>'+(w.auto ? '' : ' <button class="mini" onclick="energieLoeschen(\''+k+'\')">&times;</button>'):'')+'</td></tr>'; }).join('')
     || '<tr><td colspan="'+(enSicht().length+3)+'" class="sub" style="padding:12px">Noch keine Monatswerte.</td></tr>';
 }
 function energieDialog(monat){
@@ -3172,13 +3219,13 @@ function energieSpeichern(){
   const w = {}; let summe = 0; ENERGIE.forEach(x => { const v = parseFloat(String(el('e_'+x.id).value).replace(',','.')); w[x.id] = v>0 ? v : 0; summe += w[x.id]; });
   if(!summe) return alert('Bitte mindestens einen Verbrauch eintragen.');
   const alt = energieMonate()[monat];
-  ablegen('einst','energie',{...(D.einst.energie||{}), monate:{...energieMonate(), [monat]:w}});
+  ablegen('einst','energie',{...(D.einst.energie||{}), monate:{...energieMonateHand(), [monat]:w}});
   notiere('Energie', monat, alt? JSON.stringify(alt) : null, JSON.stringify(w), ENERGIE.map(x=>x.name+' '+w[x.id]+' '+x.einheit).join(', '));
   schliesse(); alles();
 }
 function energieLoeschen(monat){
   if(!confirm('Verbrauchswerte für '+monat+' löschen?')) return;
-  const m = {...energieMonate()}; const alt = m[monat]; delete m[monat];
+  const m = {...energieMonateHand()}; const alt = m[monat]; delete m[monat];
   ablegen('einst','energie',{...(D.einst.energie||{}), monate:m}); notiere('Energie', monat, alt? JSON.stringify(alt):null, null, 'gelöscht'); alles();
 }
 function energiePreisDialog(){
@@ -3661,7 +3708,7 @@ const demoDaten = () => { const au = Object.entries(D.auftraege).filter(([k,a]) 
   return {au, zt: Object.entries(D.zeiten).filter(([k,z]) => s.has(z.auftragId) || z.erstelltVon === 'Demo').map(([k]) => k),
     sf: Object.entries(D.sonderfaelle).filter(([k,x]) => x.erstelltVon === 'Demo' || s.has(x.auftragId)).map(([k]) => k),
     ur: Object.entries(D.urlaub).filter(([k,u]) => u.erstelltVon === 'Demo').map(([k]) => k),
-    en: Object.keys(energieMonate()).length}; };
+    en: Object.keys(energieMonateHand()).length}; };
 function demoLoeschen(){
   if(!darfSchreiben()) return; const d = demoDaten();
   if(!d.au.length && !d.zt.length && !d.sf.length && !d.ur.length && !d.en) return alert('Keine Fake-/Demo-Daten gefunden.');
