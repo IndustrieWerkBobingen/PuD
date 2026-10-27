@@ -505,7 +505,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
 <!-- ===== QM ===== -->
 <section id="v-qm" class="verstecke">
   <h1>QM &ndash; Packs und Kosten je Pack</h1>
-  <p class="sub">Aus der Historie (abgerechnete Packs je Tag) und den Z&auml;hlerst&auml;nden: was im Ofen war, wie viele Chargen n&ouml;tig waren und was ein Pack an Gas, Strom und Wasser kostet. Ofengas tragen nur Packs mit Ofen (nach Polymer-Gewicht), Strom, &uuml;briges Gas und Wasser werden nach der Zahl der Arbeitsschritte verteilt. Material und Personal sind nicht enthalten. Der laufende Monat z&auml;hlt erst, wenn er vorbei ist.</p>
+  <p class="sub">Aus der Historie (abgerechnete Packs je Tag) und den Z&auml;hlerst&auml;nden: was im Ofen war, wie viele Ofeng&auml;nge mindestens n&ouml;tig waren und was ein Pack an Gas, Strom und Wasser kostet. Ofengas tragen nur Packs mit Ofen (nach Polymer-Gewicht), Strom, &uuml;briges Gas und Wasser werden nach der Zahl der Arbeitsschritte verteilt. Material und Personal sind nicht enthalten. Der laufende Monat z&auml;hlt erst, wenn er vorbei ist.</p>
   <div class="werkzeuge">
     <label>Zeitraum <select id="qmZeit"><option value="1">letzter Monat</option><option value="3">letztes Quartal</option><option value="12" selected>letzte 12 Monate</option><option value="0">alles</option></select></label>
     <label>Kunde <select id="qmKunde"><option value="">alle</option></select></label>
@@ -516,7 +516,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
   <div id="qmPHinweis"></div>
   <div class="karte">
     <h2>Je Monat</h2>
-    <p class="sub">Chargen n&ouml;tig = je Tag aufgerundet bei max. 10 kg Polymer; &bdquo;theoretisch&ldquo; = Reste auf den Monat gerechnet. kg je Charge zeigt, wie voll die Ofeng&auml;nge im Schnitt waren (10 kg = voll).</p>
+    <p class="sub">Ofeng&auml;nge mindestens = Polymer des Monats &divide; 10 kg, aufgerundet (die &Ouml;fen laufen nicht t&auml;glich, Teile ohne Richtwert fahren mit). &bdquo;gefahren&ldquo; kommt aus dem Messblatt bzw. der Historie. kg je Ofengang zeigt, wie voll die &Ouml;fen im Schnitt waren (10 kg = voll).</p>
     <div style="overflow:auto"><table class="liste" id="qmPMonat"></table></div>
   </div>
   <div class="qmGitter">
@@ -2161,12 +2161,13 @@ function histAuswertung(m){
   const doc = histDoc(m), n = histTageZahl(m), r = {kg:0, min:0, ist:0, minMitIst:0, fMitIst:0, tageIst:0, ohne:0, stk:0, f:0, kurz:[], tage:[]};
   for(let d = 1; d <= n; d++){
     const tt = histTT(d), t = histTag(doc, tt), ist = (doc.chargen||{})[tt] !== undefined && (doc.chargen||{})[tt] !== '' ? +doc.chargen[tt] : null;
-    r.kg += t.kg; r.min += t.min; r.ohne += t.ohne; r.stk += t.stk; r.f += t.f;
+    r.kg += t.kg; r.minTag = (r.minTag||0) + t.min; r.ohne += t.ohne; r.stk += t.stk; r.f += t.f;
     if(ist !== null){ r.ist += ist; r.minMitIst += t.min; r.fMitIst += t.f; r.tageIst++; }
     if(t.f > 0 && t.rest > 0 && t.rest <= 0.5) r.kurz.push(d);
     r.tage.push({d, tt, ...t, ist});
   }
   r.monatMin = r.f > 1e-9 ? Math.ceil(r.f - 1e-9) : 0;
+  r.min = r.monatMin;   /* Öfen laufen nicht täglich: mindestens nötige Ofengänge = Polymer des Monats ÷ 10 kg, aufgerundet */
   return r;
 }
 function histMonatWahl(m){ histMonat = m || histMonat; histExtra = []; zeichneHistorie(); }
@@ -2190,8 +2191,8 @@ function zeichneHistorie(){
         tage.map(d => { const v = ((doc.tage||{})[histTT(d)]||{})[nr]; return '<td style="padding:1px"><input type="number" min="0" data-nr="'+esc(nr)+'" data-tt="'+histTT(d)+'" value="'+(v===undefined||v===''?'':v)+'" style="width:42px;padding:3px;text-align:right"'+dis+' onchange="histZelle(this)"></td>'; }).join('')+
         (mitSumme ? '<td class="num" id="hs-'+esc(nr)+'"><b>'+(sum||'')+'</b></td>' : '')+'</tr>'; });
     t += '<tr><td style="'+st+'"><b>Polymer gesamt (kg, berechnet)</b></td>'+tage.map(d => '<td class="num" id="hk-'+histTT(d)+'"></td>').join('')+(mitSumme ? '<td class="num" id="hk-sum"></td>' : '')+'</tr>'+
-      '<tr><td style="'+st+'"><b>Chargen mindestens (max. '+de(histMaxKg(),0)+' kg je Charge)</b></td>'+tage.map(d => '<td class="num" id="hm-'+histTT(d)+'"></td>').join('')+(mitSumme ? '<td class="num" id="hm-sum"></td>' : '')+'</tr>'+
-      '<tr><td style="'+st+'"><b>Chargen gefahren (Ist)</b></td>'+tage.map(d => { const v = (doc.chargen||{})[histTT(d)]; return '<td style="padding:1px"><input type="number" min="0" data-tt="'+histTT(d)+'" value="'+(v===undefined||v===''?'':v)+'" style="width:42px;padding:3px;text-align:right"'+dis+' onchange="histCharge(this)"></td>'; }).join('')+(mitSumme ? '<td class="num" id="hi-sum"></td>' : '')+'</tr></tbody></table></div>';
+      '<tr><td style="'+st+'"><b>Ofenfüllung (10 kg = 1 Ofengang)</b></td>'+tage.map(d => '<td class="num" id="hm-'+histTT(d)+'"></td>').join('')+(mitSumme ? '<td class="num" id="hm-sum"></td>' : '')+'</tr>'+
+      '<tr><td style="'+st+'"><b>Ofengänge gefahren (Ist)</b></td>'+tage.map(d => { const v = (doc.chargen||{})[histTT(d)]; return '<td style="padding:1px"><input type="number" min="0" data-tt="'+histTT(d)+'" value="'+(v===undefined||v===''?'':v)+'" style="width:42px;padding:3px;text-align:right"'+dis+' onchange="histCharge(this)"></td>'; }).join('')+(mitSumme ? '<td class="num" id="hi-sum"></td>' : '')+'</tr></tbody></table></div>';
     return t; };
   h += haelfte(1, n, true);
   if(sw){ const frei = Object.values(D.teile).filter(t => !nrs.includes(String(t.nr))); h += '<div class="werkzeuge" style="margin-top:10px"><select id="histPlus"><option value="">Weitere Position in die Tabelle holen …</option>'+poSortiert(frei).map(t => '<option value="'+esc(t.nr)+'">'+esc(t.nr)+' '+esc(t.name)+'</option>').join('')+'</select><button class="btn sek" onclick="histPlus()">Hinzufügen</button></div>'; }
@@ -2212,19 +2213,17 @@ function histCharge(inp){
 }
 function histRechnen(){
   const m = histMonat, a = histAuswertung(m), doc = histDoc(m), max = histMaxKg(), set = (id, v) => { const e = el(id); if(e) e.innerHTML = v; };
-  a.tage.forEach(t => { set('hk-'+t.tt, t.kg ? de(t.kg,1)+(t.ohne ? '<span title="'+t.ohne+' Stück ohne Polymerangabe nicht eingerechnet" style="color:#a60"> *</span>' : '') : (t.ohne ? '<span style="color:#a60">*</span>' : '')); set('hm-'+t.tt, t.min ? '<b>'+t.min+'</b>' : ''); });
-  set('hk-sum', '<b>'+de(a.kg,1)+'</b>'); set('hm-sum', '<b>'+a.min+'</b>'); set('hi-sum', '<b>'+(a.tageIst ? a.ist : '')+'</b>');
+  a.tage.forEach(t => { set('hk-'+t.tt, t.kg ? de(t.kg,1)+(t.ohne ? '<span title="'+t.ohne+' Stück ohne Polymerangabe nicht eingerechnet" style="color:#a60"> *</span>' : '') : (t.ohne ? '<span style="color:#a60">*</span>' : '')); set('hm-'+t.tt, t.f > 1e-9 ? de(t.f,1) : ''); });
+  set('hk-sum', '<b>'+de(a.kg,1)+'</b>'); set('hm-sum', '<b>'+de(a.f,1)+'</b>'); set('hi-sum', '<b>'+(a.tageIst ? a.ist : '')+'</b>');
   const k2 = (t, w, hint) => kz(w, t+(hint ? '<br><small>'+hint+'</small>' : ''));
   let h = '<div class="kennzahlen" style="margin:10px 0">'+
     k2('Polymer im Monat', de(a.kg,0)+' kg', a.stk+' Stück eingetragen')+
-    k2('Chargen mindestens', a.min, 'je Tag aufgerundet, max. '+de(max,0)+' kg je Charge')+
-    k2('Chargen gefahren', a.tageIst ? a.ist : '–', a.tageIst ? 'an '+a.tageIst+' Tagen eingetragen' : 'noch nichts eingetragen')+
-    k2('Auslastung der Chargen', a.ist > 0 ? de(a.fMitIst/a.ist*100,0)+' %' : '–', 'Füllgrad = kg Polymer ÷ '+de(max,0)+' kg')+
-    k2('Einsparpotenzial im Monat', a.min > a.monatMin ? (a.min - a.monatMin)+' Chargen' : '–', 'Reste der Tage zusammengezählt: '+a.monatMin+' statt '+a.min+' Chargen'+(a.tageIst && a.ist > a.monatMin ? ' · gegenüber Ist: '+(a.ist - a.monatMin) : ''))+'</div>';
+    k2('Ofengänge mindestens', a.min, 'Polymer des Monats ÷ '+de(max,0)+' kg, aufgerundet')+
+    k2('Ofengänge gefahren', a.tageIst ? a.ist : '–', a.tageIst ? 'an '+a.tageIst+' Tagen eingetragen' : 'noch nichts eingetragen (Messblatt)')+
+    k2('Auslastung', a.ist > 0 ? de(a.fMitIst/a.ist*100,0)+' %' : '–', 'kg Polymer ÷ ('+de(max,0)+' kg × gefahrene Ofengänge)')+
+    k2('Einsparpotenzial', a.tageIst && a.ist > a.min ? (a.ist - a.min)+' Ofengänge' : '–', a.tageIst ? 'gefahren − mindestens' : 'erst mit gefahrenen Ofengängen')+'</div>';
   const zeilen = [];
-  if(a.tageIst) zeilen.push('An den Tagen mit eingetragenen Chargen wurden <b>'+a.ist+'</b> gefahren, nach Gewicht wären mindestens <b>'+a.minMitIst+'</b> nötig gewesen: Unterschied <b>'+(a.ist-a.minMitIst)+'</b> Chargen.');
-  if(a.min > a.monatMin) zeilen.push('Wären die Restmengen immer auf den nächsten Tag gewartet worden (alles voll gefahren), reichten im Monat rechnerisch <b>'+a.monatMin+'</b> statt '+a.min+' Chargen (Obergrenze der Einsparung, ohne Rücksicht auf Termine).');
-  if(a.kurz.length) zeilen.push('Tage, an denen die letzte Charge höchstens halb voll war (Kandidaten zum Warten): <b>'+a.kurz.map(d => d+'.').join(', ')+'</b>');
+  zeilen.push('Die Öfen laufen nicht jeden Tag, Reste werden mit dem nächsten Ofengang gefahren. Deshalb zählt der Monat: mindestens <b>'+a.min+'</b> Ofengänge für '+de(a.kg,0)+' kg Polymer. Teile ohne Richtwert fahren mit und brauchen keinen eigenen Ofengang.');
   if(a.ohne) zeilen.push('<span style="color:#a60">* '+a.ohne+' Stück ohne Polymerangabe sind in den kg nicht enthalten (z. B. Düsen ohne Pack, Schnecken). Das lässt sich bei den Positionen ergänzen; bis dahin ist „mindestens“ eine Untergrenze.</span>');
   h += zeilen.map(z => '<p style="margin:4px 0">'+z+'</p>').join('');
   set('histSumme', h);
@@ -2343,17 +2342,20 @@ function zVerteilen(von, bis, w){
   for(let x = plusTage(von,1); x <= bis; x = plusTage(x,1)){
     const m = x.slice(0,7), tt = x.slice(8), doc = histDoc(m); monate.add(m);
     const z = (doc.tage||{})[tt]; if(!z) continue;
-    const t = histTag(doc, tt); r.minC += t.min; r.kg += t.kg; r.tageDaten++;
+    const t = histTag(doc, tt); r.kg += t.kg; r.tageDaten++;
     const ist = (doc.chargen||{})[tt]; if(ist !== undefined && ist !== '') { r.istC += +ist; r.tageIst++; }
     Object.entries(z).forEach(([nr, n]) => { if(+n > 0){ r.n[nr] = (r.n[nr]||0) + (+n); r.stk += +n; } });
   }
   monate.forEach(m => { if(!D.einst[histId(m)]) r.fehlt.push(m); });
+  r.minC = r.kg > 1e-9 ? Math.ceil(r.kg/max - 1e-9) : 0;   /* mindestens nötige Ofengänge im Zeitraum */
   /* Ofenlast je Stück = Anteil an einer Charge nach Gewicht (Polymer g ÷ max. kg je Charge) */
   const zeilen = Object.entries(r.n).map(([nr, n]) => { const t = histPos(nr) || {}, g = polymerGVon(t);
     const last = g ? g/1000/max : 0, ofen = posOfen(t), basis = !t.sonstiges && posArt(t) !== 'tag';
     return {nr, t, n, last, ofen, basis, gew: basis ? Math.max(1, (t.schritte||[]).length) : 0, schaetz:false}; });
   const bek = zeilen.filter(z => z.ofen && z.last > 0), sumN = bek.reduce((a, z) => a + z.n, 0), avg = sumN ? bek.reduce((a, z) => a + z.n*z.last, 0)/sumN : 0;
-  zeilen.forEach(z => { if(z.ofen && !(z.last > 0) && avg > 0){ z.last = avg; z.schaetz = true; } });
+  /* Teile mit Gruppe „Ofen, ohne Richtwert“ fahren nur mit (werden in Chargen gelegt, die über das Polymer ausgereizt sind) → kein Ofengas.
+     Nur Positionen ganz ohne Ofen-Gruppe bekommen ersatzweise den Durchschnitt (gekennzeichnet). */
+  zeilen.forEach(z => { if(z.ofen && !(z.last > 0) && !(z.t && z.t.rwGr) && avg > 0){ z.last = avg; z.schaetz = true; } });
   const W = zeilen.reduce((a, z) => a + (z.ofen ? z.n*z.last : 0), 0), basisN = zeilen.reduce((a, z) => a + z.n*z.gew, 0);   /* Gewicht = Zahl der Arbeitsschritte */
   r.restGas = r.gas !== null && r.ofen !== null ? Math.max(0, r.gas - r.ofen) : null;
   const restKosten = (r.restGas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser;
@@ -2403,7 +2405,7 @@ function zeichneZaehlerErgebnis(){
   if(r.stk){
     h += '<div style="overflow:auto;max-height:56vh"><table class="liste" style="font-size:12.5px"><thead><tr><th>Position</th><th class="num">Stück</th><th class="num">Ofengas je Stück</th><th class="num">Ofen €/Stück</th><th class="num">Strom, übr. Gas, Wasser €/Stück</th><th class="num">Gesamt €/Stück</th><th class="num">kWh je Stück</th></tr></thead><tbody>'+
       r.zeilen.map(z => '<tr><td style="white-space:nowrap"><b>'+esc(z.nr)+'</b> <span class="sub">'+esc((z.t.name||'(nicht im Katalog)').slice(0,48))+'</span>'+(z.schaetz ? ' <span class="pill warn" title="Keine Polymer-Angabe: mit dem Durchschnitt der übrigen Ofen-Positionen gerechnet">geschätzt</span>' : '')+(z.ofen ? '' : ' <span class="pill grau">ohne Ofen</span>')+'</td><td class="num">'+zde(z.n)+'</td><td class="num">'+(z.ofen ? zde(z.ofenM3*1000,0)+' l' : '–')+'</td><td class="num">'+(z.ofen ? zde(z.ofenEur,2) : '–')+'</td><td class="num">'+(z.basis ? zde(z.restEur,2) : '–')+'</td><td class="num"><b>'+zde(z.eur,2)+'</b></td><td class="num">'+zde(z.kwh,1)+'</td></tr>').join('')+'</tbody></table></div>'+
-      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Übriges Gas, Strom und Wasser werden nach der Zahl der Arbeitsschritte je Position verteilt (mehr Schritte = mehr Anteil) (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(r.brenn,1)+' kWh je m³. Ofen-Positionen ohne Polymer-Angabe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
+      '<p class="sub" style="margin-top:8px"><b>So wird gerechnet:</b> Das Ofengas (Ofen 1+2) wird nach Gewicht verteilt (Polymer je Stück ÷ '+de(histMaxKg(),0)+' kg je Charge). Übriges Gas, Strom und Wasser werden nach der Zahl der Arbeitsschritte je Position verteilt (mehr Schritte = mehr Anteil) (ohne „Sonstiges“ und Transport). Preise: Gas '+de(pr.gas,2)+' €/m³, Strom '+de(pr.strom,2)+' €/kWh, Wasser '+de(pr.wasser,2)+' €/m³, '+de(r.brenn,1)+' kWh je m³. Positionen „Ofen, ohne Richtwert“ fahren mit und tragen kein Ofengas; nur Positionen ganz ohne Ofen-Gruppe zählen mit dem Durchschnitt (gekennzeichnet). Das ist eine Näherung, kein Messwert je Pack.</p>';
   }
   el('histZErg').innerHTML = h;
 }
@@ -2456,7 +2458,7 @@ function zeichneMonatVergleich(){
     zeile('Energie gesamt (Gas + Strom)', r => zde((r.gas||0)*r.brenn + (r.strom||0))+' kWh')+
     zeile('Kosten (Gas, Strom, Wasser)', r => '<b>'+zde(r.kosten,0)+' €</b>')+
     zeile('Chargen', r => r.istC > 0 ? r.istC+' <span class="sub">gefahren</span>' : (r.minC ? r.minC+' <span class="sub">mind. nötig</span>' : '–'))+
-    zeile('Ofengas je Charge', r => jeCh(r) !== null ? zde(jeCh(r),1)+' m³' : '–')+
+    zeile('Ofengas je Ofengang', r => jeCh(r) !== null ? zde(jeCh(r),1)+' m³' : '–')+
     zeile('Energiekosten je Stück (Ø)', r => jeStk(r) !== null ? '<b>'+zde(jeStk(r),2)+' €</b>' : '–')+
     '</tbody></table></div>';
   if(w.geschaetzt.length) h += '<p class="sub" style="color:#a60">Hochgerechnet, weil eine Ablesung fehlt (Monat liegt vor der ersten bzw. nach der letzten Ablesung) – grobe Annahme: '+[...new Set(w.geschaetzt)].join(', ')+'.</p>';
@@ -2489,13 +2491,13 @@ function zeichneUebersicht(){
     zeile('Packs (Stück)', x => zde(x.r.stk))+
     zeile('Tage mit Stückzahlen', x => x.r.tageDaten+' / '+x.r.tage+(x.r.tageDaten < x.r.tage*0.5 ? ' <span style="color:#a60">!</span>' : ''))+
     zeile('Polymer im Ofen', x => zde(x.a.kg)+' kg')+
-    zeile('Chargen '+(R.some(x => x.a.tageIst) ? '(Ist, sonst mind.)' : 'mindestens'), x => x.ch+(x.a.tageIst ? '' : ' <span class="sub">min</span>'))+
-    zeile('Einsparpotenzial (Reste)', x => x.a.min > x.a.monatMin ? (x.a.min - x.a.monatMin) : '–')+
+    zeile('Ofengänge '+(R.some(x => x.a.tageIst) ? '(Ist, sonst mind.)' : 'mindestens'), x => x.ch+(x.a.tageIst ? '' : ' <span class="sub">min</span>'))+
+    zeile('Einsparpotenzial (gefahren − mind.)', x => x.a.tageIst && x.a.ist > x.a.min ? (x.a.ist - x.a.min) : '–')+
     zeile('Gas gesamt (66015)', x => x.r.gas !== null ? zde(x.r.gas)+' m³' : '–')+
     zeile('davon Ofen 1+2', x => x.r.ofen !== null ? zde(x.r.ofen)+' m³' : '–')+
     zeile('Strom (Abteilung)', x => x.r.strom !== null ? zde(x.r.strom)+' kWh' : '–')+
     zeile('Wasser', x => x.r.wasser !== null ? zde(x.r.wasser,1)+' m³' : '–')+
-    zeile('Ofengas je Charge', x => x.r.ofen && x.ch ? zde(x.r.ofen/x.ch,1)+' m³' : '–', true)+
+    zeile('Ofengas je Ofengang', x => x.r.ofen && x.ch ? zde(x.r.ofen/x.ch,1)+' m³' : '–', true)+
     zeile('Ofengas je kg Polymer', x => x.r.ofen && x.a.kg ? zde(x.r.ofen/x.a.kg,2)+' m³' : '–', true)+
     zeile('Strom je Pack', x => x.r.strom !== null && x.r.stk ? zde(x.r.strom/x.r.stk,2)+' kWh' : '–')+
     zeile('Energiekosten je Pack (Ø)', x => x.r.stk ? zde(x.r.zeilen.reduce((s, z) => s + z.n*z.eur, 0)/x.r.stk,2)+' €' : '–', true)+
@@ -3030,19 +3032,19 @@ function zeichneQMPacks(){
   el('qmPKenn').innerHTML =
     k2('Packs', zde(t.stk), d.monate.length+' Monat'+(d.monate.length>1?'e':'')+': '+MN(d.monate[0])+(d.monate.length>1 ? ' – '+MN(d.monate[d.monate.length-1]) : ''))+
     k2('davon im Ofen', zde(t.ofenStk), zde(t.kg)+' kg Polymer')+
-    (d.kunde ? '' : k2('Chargen nötig', t.min, 'theoretisch '+t.theo+(t.istMon ? ' · gefahren '+t.ist : '')))+
-    (d.kunde ? '' : k2('Einsparpotenzial', t.min > t.theo ? (t.min - t.theo)+' Chargen' : '–', 'Reste der Tage auf den Monat gerechnet'))+
+    (d.kunde ? '' : k2('Ofengänge mindestens', t.min, 'Polymer je Monat ÷ 10 kg'+(t.istMon ? ' · gefahren '+t.ist : '')))+
+    (d.kunde ? '' : k2('Einsparpotenzial', t.istMon && t.ist > t.min ? (t.ist - t.min)+' Ofengänge' : '–', t.istMon ? 'gefahren − mindestens' : 'erst mit gemessenen Ofengängen (Messblatt)'))+
     k2('Energiekosten', zde(t.eur,0)+' €', 'Gas, Strom, Wasser'+(d.kunde ? ' · Anteil '+esc(d.kunde) : ''))+
     k2('Ø je Pack', t.stk ? zde(t.eur/t.stk,2)+' €' : '–', t.ofenStk ? 'mit Ofen '+zde(d.pos.filter(p => p.ofen).reduce((s,p)=>s+p.eur,0)/t.ofenStk,2)+' € · ohne '+(t.stk-t.ofenStk ? zde(d.pos.filter(p => !p.ofen).reduce((s,p)=>s+p.eur,0)/(t.stk-t.ofenStk),2)+' €' : '–') : '');
   const hw = [];
   if(d.M.some(o => o.geschaetzt)) hw.push('Mit ~ markierte Monate: Zählerstand hochgerechnet, weil eine Ablesung fehlt.');
   if(d.M.some(o => o.tageDaten < o.tage*0.5)) hw.push('Monate mit ! haben für weniger als die Hälfte der Tage Stückzahlen – die Kosten je Pack fallen dort zu hoch aus.');
-  const ohnePoly = d.pos.filter(p => p.ofen && !polymerGVon(p.t)).reduce((s,p) => s+p.n, 0); if(ohnePoly) hw.push(ohnePoly+' Packs mit Ofen haben keinen Richtwert (Ofen-Gruppe „Ofen, ohne Richtwert“) und zählen beim Ofengas mit dem Durchschnitt.');
+  const ohnePoly = d.pos.filter(p => p.ofen && !polymerGVon(p.t)).reduce((s,p) => s+p.n, 0); if(ohnePoly) hw.push(ohnePoly+' Packs mit Ofen haben keinen Richtwert (kaum Polymer) – sie fahren in den Chargen mit und tragen kein Ofengas, nur Strom, übriges Gas und Wasser.');
   el('qmPHinweis').innerHTML = hw.length ? '<div class="hinweis gelb">'+hw.join(' ')+'</div>' : '';
   /* je Monat */
-  el('qmPMonat').innerHTML = '<thead><tr><th>Monat</th><th class="num">Packs</th><th class="num">davon Ofen</th><th class="num">kg Polymer</th>'+(d.kunde ? '' : '<th class="num">Chargen nötig</th><th class="num">theoretisch</th><th class="num">gefahren</th><th class="num">kg je Charge</th>')+'<th class="num">Ofengas</th><th class="num">Strom</th><th class="num">Wasser</th><th class="num">Energiekosten</th><th class="num">€ je Pack</th></tr></thead><tbody>'+
+  el('qmPMonat').innerHTML = '<thead><tr><th>Monat</th><th class="num">Packs</th><th class="num">davon Ofen</th><th class="num">kg Polymer</th>'+(d.kunde ? '' : '<th class="num">Ofengänge mind.</th><th class="num">gefahren</th><th class="num">kg je Ofengang</th>')+'<th class="num">Ofengas</th><th class="num">Strom</th><th class="num">Wasser</th><th class="num">Energiekosten</th><th class="num">€ je Pack</th></tr></thead><tbody>'+
     d.M.map(o => '<tr><td style="white-space:nowrap"><b>'+MN(o.m)+'</b>'+(o.geschaetzt ? ' ~' : '')+(o.tageDaten < o.tage*0.5 ? ' <span style="color:#a60">!</span>' : '')+'</td><td class="num">'+zde(o.stk)+'</td><td class="num">'+zde(o.ofenStk)+'</td><td class="num">'+zde(o.kg)+'</td>'+
-      (d.kunde ? '' : '<td class="num">'+o.min+'</td><td class="num">'+o.theo+'</td><td class="num">'+(o.ist !== null ? o.ist : '–')+'</td><td class="num">'+(o.min ? zde(o.kgAlle/(o.ist || o.min),1)+' kg' : '–')+'</td>')+
+      (d.kunde ? '' : '<td class="num">'+o.min+'</td><td class="num">'+(o.ist !== null ? o.ist : '–')+'</td><td class="num">'+(o.min ? zde(o.kgAlle/(o.ist || o.min),1)+' kg' : '–')+'</td>')+
       '<td class="num">'+(o.ofen !== null ? zde(o.ofen)+' m³' : '–')+'</td><td class="num">'+(o.strom !== null ? zde(o.strom)+' kWh' : '–')+'</td><td class="num">'+(o.wasser !== null ? zde(o.wasser,1)+' m³' : '–')+'</td><td class="num">'+zde(o.eur,0)+' €</td><td class="num"><b>'+(o.stk ? zde(o.eur/o.stk,2)+' €' : '–')+'</b></td></tr>').join('')+'</tbody>';
   /* je Kunde */
   const K = {}; d.pos.forEach(p => { const k = p.t.kunde || '(ohne Kunde)', o = K[k] = K[k] || {n:0, ofenN:0, kg:0, eur:0}; o.n += p.n; o.ofenN += p.ofenN; o.kg += p.kg; o.eur += p.eur; });
