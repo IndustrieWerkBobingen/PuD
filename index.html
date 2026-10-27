@@ -522,6 +522,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
   <div class="qmGitter">
     <div class="karte">
       <h2>Je Kunde</h2>
+      <p class="sub">Kunde anklicken f&uuml;r Details (Kuchen, Monatsvergleich, h&ouml;chster/niedrigster Monat).</p>
       <div style="overflow:auto"><table class="liste" id="qmPKunde"></table></div>
       <div id="qmPKundeChart" style="margin-top:10px"></div>
     </div>
@@ -542,6 +543,7 @@ body.mobil #mobil{display:block;max-width:520px;margin:0 auto;padding:0 12px 90p
   </div>
   <div class="karte">
     <h2>Je Position</h2>
+    <p class="sub">Position anklicken f&uuml;r Details.</p>
     <div style="overflow:auto;max-height:60vh"><table class="liste" id="qmPPos"></table></div>
   </div>
 
@@ -2383,7 +2385,7 @@ function zVerteilen(von, bis, w){
     const aS = z.basis ? anteil(z,'gS',SS) : 0, aG = z.basis ? anteil(z,'gG',SG) : 0, aW = z.basis ? anteil(z,'gW',SW) : 0;
     const rest = (r.strom||0)*pr.strom*aS + (r.restGas||0)*pr.gas*aG + (r.wasser||0)*pr.wasser*aW;
     const kwh = ofenM3*brenn + (r.restGas||0)*brenn*aG + (r.strom||0)*aS;
-    return {...z, ofenM3, ofenEur: ofenM3*pr.gas, restEur: rest, eur: ofenM3*pr.gas + rest, kwh}; });
+    return {...z, ofenM3, ofenEur: ofenM3*pr.gas, stromEur: (r.strom||0)*pr.strom*aS, gasEur: (r.restGas||0)*pr.gas*aG, wasserEur: (r.wasser||0)*pr.wasser*aW, restEur: rest, eur: ofenM3*pr.gas + rest, kwh}; });
   r.kosten = (r.gas||0)*pr.gas + (r.strom||0)*pr.strom + (r.wasser||0)*pr.wasser; r.pr = pr;
   return r;
 }
@@ -3073,7 +3075,7 @@ function zeichneQMPacks(){
   const K = {}; d.pos.forEach(p => { const k = p.t.kunde || '(ohne Kunde)', o = K[k] = K[k] || {n:0, ofenN:0, kg:0, eur:0}; o.n += p.n; o.ofenN += p.ofenN; o.kg += p.kg; o.eur += p.eur; });
   const KL = Object.entries(K).sort((a,b) => b[1].eur - a[1].eur);
   el('qmPKunde').innerHTML = '<thead><tr><th>Kunde</th><th class="num">Packs</th><th class="num">davon Ofen</th><th class="num">kg Polymer</th><th class="num">Energiekosten</th><th class="num">Anteil</th><th class="num">€ je Pack</th></tr></thead><tbody>'+
-    KL.map(([k,o]) => '<tr><td><b>'+esc(k)+'</b></td><td class="num">'+zde(o.n)+'</td><td class="num">'+zde(o.ofenN)+'</td><td class="num">'+zde(o.kg)+'</td><td class="num">'+zde(o.eur,0)+' €</td><td class="num">'+(t.eur ? zde(o.eur/t.eur*100,0)+' %' : '–')+'</td><td class="num"><b>'+(o.n ? zde(o.eur/o.n,2)+' €' : '–')+'</b></td></tr>').join('')+'</tbody>';
+    KL.map(([k,o]) => '<tr class="klick" title="Details anzeigen" data-k="'+esc(k)+'" onclick="qmPDetail(\'kunde\', this.dataset.k)"><td><b>'+esc(k)+'</b></td><td class="num">'+zde(o.n)+'</td><td class="num">'+zde(o.ofenN)+'</td><td class="num">'+zde(o.kg)+'</td><td class="num">'+zde(o.eur,0)+' €</td><td class="num">'+(t.eur ? zde(o.eur/t.eur*100,0)+' %' : '–')+'</td><td class="num"><b>'+(o.n ? zde(o.eur/o.n,2)+' €' : '–')+'</b></td></tr>').join('')+'</tbody>';
   el('qmPKundeChart').innerHTML = chartBalken(KL.map(([k,o]) => [k, Math.round(o.eur)]), '€');
   /* je Ofen-Gruppe */
   const G = {}; d.pos.forEach(p => { const id = p.t.rwGr || '', o = G[id] = G[id] || {n:0, kg:0, eur:0, ofenM3:0}; o.n += p.n; o.kg += p.kg; o.eur += p.eur; o.ofenM3 += p.ofenM3; });
@@ -3083,7 +3085,53 @@ function zeichneQMPacks(){
       return '<tr><td style="white-space:nowrap">'+(x ? (x.ober === 'Sonst' ? esc(x.name) : '<b>'+esc(x.ober)+'</b> · '+esc(x.name)) : '<span class="pill warn">ohne Gruppe</span>')+'</td><td class="num">'+(x && x.g ? x.g+' g' : '–')+'</td><td class="num">'+(x && x.g ? Math.floor(histMaxKg()*1000/x.g)+' Stück' : '–')+'</td><td class="num">'+zde(o.n)+'</td><td class="num">'+(o.kg ? zde(o.kg) : '–')+'</td><td class="num">'+(o.ofenM3 ? zde(o.ofenM3/o.n*1000,0)+' l' : '–')+'</td><td class="num">'+zde(o.eur,0)+' €</td><td class="num"><b>'+(o.n ? zde(o.eur/o.n,2)+' €' : '–')+'</b></td></tr>'; }).join('')+'</tbody>';
   /* je Position */
   el('qmPPos').innerHTML = '<thead><tr><th>Nr</th><th>Position</th><th>Kunde</th><th>Ofen-Gruppe</th><th class="num">Schritte</th><th class="num">Packs</th><th class="num">Ofengas je Pack</th><th class="num">kWh je Pack</th><th class="num">€ je Pack</th><th class="num">Energiekosten</th></tr></thead><tbody>'+
-    d.pos.sort((a,b) => (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0) || a.nr.localeCompare(b.nr,'de',{numeric:true})).map(p => '<tr><td><b>'+esc(p.nr)+'</b></td><td>'+esc((p.t.name||'(nicht im Katalog)'))+'</td><td>'+esc(p.t.kunde||'')+'</td><td class="sub" style="white-space:nowrap">'+esc(rwText(p.t.rwGr)||'')+'</td><td class="num">'+((p.t.schritte||[]).length||'–')+'</td><td class="num">'+zde(p.n)+'</td><td class="num">'+(p.ofen ? zde(p.ofenM3/p.n*1000,0)+' l' : '–')+'</td><td class="num">'+zde(p.kwh/p.n,1)+'</td><td class="num"><b>'+zde(p.eur/p.n,2)+' €</b></td><td class="num">'+zde(p.eur,0)+' €</td></tr>').join('')+'</tbody>';
+    d.pos.sort((a,b) => (parseInt(a.nr,10)||0) - (parseInt(b.nr,10)||0) || a.nr.localeCompare(b.nr,'de',{numeric:true})).map(p => '<tr class="klick" title="Details anzeigen" data-nr="'+esc(p.nr)+'" onclick="qmPDetail(\'pos\', this.dataset.nr)"><td><b>'+esc(p.nr)+'</b></td><td>'+esc((p.t.name||'(nicht im Katalog)'))+'</td><td>'+esc(p.t.kunde||'')+'</td><td class="sub" style="white-space:nowrap">'+esc(rwText(p.t.rwGr)||'')+'</td><td class="num">'+((p.t.schritte||[]).length||'–')+'</td><td class="num">'+zde(p.n)+'</td><td class="num">'+(p.ofen ? zde(p.ofenM3/p.n*1000,0)+' l' : '–')+'</td><td class="num">'+zde(p.kwh/p.n,1)+'</td><td class="num"><b>'+zde(p.eur/p.n,2)+' €</b></td><td class="num">'+zde(p.eur,0)+' €</td></tr>').join('')+'</tbody>';
+}
+/* ---------- QM: Detailfenster je Kunde / je Position (Kuchen, Monatsvergleich, höchster/niedrigster Monat) ---------- */
+function qmPDetail(art, wert){
+  const mon = +el('qmZeit').value, jetzt = heute().slice(0,7);
+  let ab = '0000-00'; if(mon){ const g = new Date(); g.setDate(1); g.setMonth(g.getMonth()-mon); ab = iso(g).slice(0,7); }
+  const monate = zUebersichtMonate().filter(m => m >= ab && m < jetzt);
+  const passt = z => art === 'kunde' ? ((z.t && z.t.kunde) || '(ohne Kunde)') === wert : z.nr === wert;
+  const t = art === 'pos' ? (histPos(wert) || {}) : null, MN = m => MON[+m.slice(5,7)-1].slice(0,3)+' '+m.slice(2,4);
+  const M = [], posK = {};
+  let ges = {stk:0, eur:0, alle:0};
+  monate.forEach(m => { const w = zMonatWerte(m), r = zVerteilen(w.von, w.bis, w), o = {m, stk:0, kg:0, ofenM3:0, ofenEur:0, gasEur:0, stromEur:0, wasserEur:0, eur:0, kwh:0};
+    r.zeilen.forEach(z => { ges.alle += z.n*z.eur; if(!passt(z)) return; const g = polymerGVon(z.t) || 0;
+      o.stk += z.n; o.kg += z.ofen ? z.n*g/1000 : 0; o.ofenM3 += z.n*z.ofenM3; o.ofenEur += z.n*z.ofenEur; o.gasEur += z.n*(z.gasEur||0); o.stromEur += z.n*(z.stromEur||0); o.wasserEur += z.n*(z.wasserEur||0); o.eur += z.n*z.eur; o.kwh += z.n*z.kwh;
+      if(art === 'kunde'){ const k = posK[z.nr] = posK[z.nr] || {eur:0, n:0, name:(z.t||{}).name||''}; k.eur += z.n*z.eur; k.n += z.n; } });
+    M.push(o); ges.stk += o.stk; ges.eur += o.eur; });
+  const titel = art === 'kunde' ? 'Kunde: '+wert : 'Position '+wert+' – '+(t.name||'');
+  let h = '<div class="overlay" onclick="if(event.target===this)schliesse()"><div class="dialog" style="max-width:1000px;width:96vw"><div class="kopf"><div><b>'+esc(titel)+'</b>'+
+    (art === 'pos' ? '<br><span class="sub" style="color:#cfe0ef">'+esc(t.kunde||'')+' · '+esc(rwText(t.rwGr)||'ohne Ofen-Gruppe')+' · Schritte: '+esc((t.schritte||[]).join(', ')||'–')+'</span>' : '')+
+    '</div><button class="zu" onclick="schliesse()">&times;</button></div><div class="rumpf">';
+  if(!monate.length || !ges.stk){ el('dialogBox').innerHTML = h+'<p class="sub">Im gewählten Zeitraum keine Packs.</p></div></div></div>'; return; }
+  const k2 = (tt, w, hint) => kz(w, tt+(hint ? '<br><small>'+hint+'</small>' : ''));
+  const sum = k => M.reduce((s,o) => s+o[k], 0);
+  h += '<div class="kennzahlen" style="margin-bottom:12px">'+k2('Packs', zde(ges.stk), MN(monate[0])+(monate.length>1 ? ' – '+MN(monate[monate.length-1]) : ''))+
+    k2('Energiekosten', zde(ges.eur,0)+' €', ges.alle ? zde(ges.eur/ges.alle*100,1)+' % aller Kosten' : '')+
+    k2('Ø je Pack', zde(ges.eur/ges.stk,2)+' €', 'Gas, Strom, Wasser')+
+    (sum('kg') ? k2('Polymer im Ofen', zde(sum('kg'))+' kg', sum('ofenM3') ? zde(sum('ofenM3'))+' m³ Ofengas' : '') : '')+'</div>';
+  /* Kuchen */
+  h += '<div class="qmGitter" style="grid-template-columns:repeat(auto-fit,minmax(380px,1fr))"><div><h3 style="margin:0 0 6px">Kosten nach Art</h3>'+
+    chartKuchen([['Ofengas', sum('ofenEur')], ['übriges Gas', sum('gasEur')], ['Strom', sum('stromEur')], ['Wasser', sum('wasserEur')]], '€')+'</div>';
+  if(art === 'kunde'){ const l = Object.entries(posK).sort((a,b) => b[1].eur - a[1].eur), top = l.slice(0,7).map(([nr,o]) => [nr+' '+o.name.slice(0,22), o.eur]), rest = l.slice(7).reduce((s,[,o]) => s+o.eur, 0);
+    h += '<div><h3 style="margin:0 0 6px">Kosten nach Position</h3>'+chartKuchen(rest > 0 ? top.concat([['übrige Positionen', rest]]) : top, '€')+'</div>'; }
+  else h += '<div><h3 style="margin:0 0 6px">Packs je Monat</h3>'+chartKuchen(M.filter(o => o.stk).map(o => [MN(o.m), o.stk]), 'Stück')+'</div>';
+  h += '</div>';
+  /* Kategorien */
+  const KAT = [['Packs', o => o.stk, v => zde(v)], ['Polymer im Ofen', o => o.kg, v => zde(v)+' kg'], ['Ofengas', o => o.ofenM3, v => zde(v)+' m³'],
+    ['Ofengas €', o => o.ofenEur, v => zde(v,0)+' €'], ['übriges Gas €', o => o.gasEur, v => zde(v,0)+' €'], ['Strom €', o => o.stromEur, v => zde(v,0)+' €'], ['Wasser €', o => o.wasserEur, v => zde(v,0)+' €'],
+    ['Energiekosten', o => o.eur, v => zde(v,0)+' €'], ['€ je Pack', o => o.stk ? o.eur/o.stk : null, v => zde(v,2)+' €']].filter(([n, f]) => M.some(o => f(o)));
+  h += '<h3 style="margin:16px 0 6px">Vergleich der Monate</h3><div style="overflow:auto"><table class="liste" style="font-size:12.5px;width:auto;min-width:60%"><thead><tr><th>Kategorie</th>'+M.map(o => '<th class="num">'+MN(o.m)+'</th>').join('')+'</tr></thead><tbody>'+
+    KAT.map(([n, f, fmt]) => { const vals = M.map(f).filter(v => v !== null), mx = Math.max(...vals), mn = Math.min(...vals);
+      return '<tr><td style="white-space:nowrap"><b>'+n+'</b></td>'+M.map(o => { const v = f(o); return '<td class="num"'+(v !== null && vals.length > 1 && v === mx ? ' style="color:#B3261E;font-weight:700"' : v !== null && vals.length > 1 && v === mn ? ' style="color:#2E7D32;font-weight:700"' : '')+'>'+(v === null ? '–' : fmt(v))+'</td>'; }).join('')+'</tr>'; }).join('')+
+    '</tbody></table></div><p class="sub" style="margin-top:4px"><span style="color:#B3261E;font-weight:700">rot</span> = höchster, <span style="color:#2E7D32;font-weight:700">grün</span> = niedrigster Monat.</p>';
+  h += '<h3 style="margin:14px 0 6px">Höchster und niedrigster Monat je Kategorie</h3><div style="overflow:auto"><table class="liste" style="font-size:12.5px"><thead><tr><th>Kategorie</th><th>höchster Monat</th><th class="num">Wert</th><th>niedrigster Monat</th><th class="num">Wert</th><th class="num">Ø je Monat</th></tr></thead><tbody>'+
+    KAT.map(([n, f, fmt]) => { const l = M.map(o => [o.m, f(o)]).filter(x => x[1] !== null); if(!l.length) return ''; const hi = l.reduce((a,b) => b[1] > a[1] ? b : a), lo = l.reduce((a,b) => b[1] < a[1] ? b : a), avg = l.reduce((s,x) => s+x[1], 0)/l.length;
+      return '<tr><td><b>'+n+'</b></td><td>'+MN(hi[0])+'</td><td class="num">'+fmt(hi[1])+'</td><td>'+MN(lo[0])+'</td><td class="num">'+fmt(lo[1])+'</td><td class="num">'+fmt(avg)+'</td></tr>'; }).join('')+'</tbody></table></div>';
+  h += '<p class="sub" style="margin-top:10px">Zeitraum wie oben im QM gewählt. Gleiche Rechnung wie im QM (Ofengas nach Polymer, Strom/übriges Gas/Wasser nach Arbeitsschritten).</p></div><div class="fuss"><span style="flex:1"></span><button class="btn" onclick="schliesse()">Schließen</button></div></div></div>';
+  el('dialogBox').innerHTML = h;
 }
 function qmPackCsv(){
   const d = qmPackDaten(), q = v => { const s = String(v === undefined || v === null ? '' : v); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }, n = (v, k) => (Math.round(v*Math.pow(10,k))/Math.pow(10,k)).toString().replace('.',',');
